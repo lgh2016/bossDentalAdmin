@@ -141,3 +141,5 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+boss-dental-admin.zip
+frontend/node_modules/.cache/default-development/0.pack

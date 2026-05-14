@@ -1,0 +1,174 @@
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+    height: 100%;
+}
+
+body {
+    margin: 0;
+    font-family:
+        "Geist", "Satoshi", "Inter", -apple-system, BlinkMacSystemFont,
+        sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings:
+        "ss01" on,
+        "cv11" on;
+    letter-spacing: -0.005em;
+}
+
+code,
+.font-mono {
+    font-family: "Geist Mono", ui-monospace, "JetBrains Mono", monospace;
+}
+
+@layer base {
+    :root {
+        --background: 220 20% 98%; /* #F7F8FA */
+        --foreground: 222 47% 11%; /* slate-900 */
+        --card: 0 0% 100%;
+        --card-foreground: 222 47% 11%;
+        --popover: 0 0% 100%;
+        --popover-foreground: 222 47% 11%;
+        --primary: 182 58% 24%; /* deep teal #1A5F61 */
+        --primary-foreground: 0 0% 100%;
+        --secondary: 210 40% 96%;
+        --secondary-foreground: 222 47% 11%;
+        --muted: 210 40% 96%;
+        --muted-foreground: 215 16% 47%; /* slate-500 */
+        --accent: 174 58% 56%; /* teal #4FD1C5 */
+        --accent-foreground: 222 47% 11%;
+        --destructive: 0 84% 60%;
+        --destructive-foreground: 0 0% 100%;
+        --border: 214 32% 91%; /* slate-200 */
+        --input: 214 32% 91%;
+        --ring: 182 58% 24%;
+        --chart-1: 182 58% 24%;
+        --chart-2: 174 58% 56%;
+        --chart-3: 220 14% 60%;
+        --chart-4: 38 92% 50%;
+        --chart-5: 158 64% 52%;
+        --radius: 0.625rem;
+
+        --sidebar-bg: 0 0% 100%;
+    }
+
+    .dark {
+        --background: 215 28% 6%; /* #0B0F15 */
+        --foreground: 210 40% 98%;
+        --card: 218 23% 11%; /* #131822 */
+        --card-foreground: 210 40% 98%;
+        --popover: 218 23% 11%;
+        --popover-foreground: 210 40% 98%;
+        --primary: 174 58% 56%; /* #4FD1C5 */
+        --primary-foreground: 222 47% 11%;
+        --secondary: 217 19% 17%;
+        --secondary-foreground: 210 40% 98%;
+        --muted: 217 19% 17%;
+        --muted-foreground: 215 20% 65%;
+        --accent: 174 58% 56%;
+        --accent-foreground: 222 47% 11%;
+        --destructive: 0 72% 60%;
+        --destructive-foreground: 210 40% 98%;
+        --border: 217 19% 20%; /* #273142 */
+        --input: 217 19% 20%;
+        --ring: 174 58% 56%;
+        --chart-1: 174 58% 56%;
+        --chart-2: 182 58% 35%;
+        --chart-3: 215 20% 50%;
+        --chart-4: 38 92% 60%;
+        --chart-5: 158 64% 60%;
+
+        --sidebar-bg: 215 28% 6%;
+    }
+}
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+    body {
+        @apply bg-background text-foreground;
+    }
+
+    ::selection {
+        background: hsl(var(--primary) / 0.15);
+        color: hsl(var(--foreground));
+    }
+
+    /* Subtle scrollbar */
+    *::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+    }
+    *::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    *::-webkit-scrollbar-thumb {
+        background: hsl(var(--border));
+        border-radius: 8px;
+        border: 2px solid transparent;
+        background-clip: content-box;
+    }
+    *::-webkit-scrollbar-thumb:hover {
+        background: hsl(var(--muted-foreground) / 0.3);
+        background-clip: content-box;
+        border: 2px solid transparent;
+    }
+}
+
+@layer utilities {
+    .glass {
+        background: hsl(var(--card) / 0.7);
+        backdrop-filter: saturate(180%) blur(16px);
+        -webkit-backdrop-filter: saturate(180%) blur(16px);
+    }
+    .grid-faint {
+        background-image: radial-gradient(
+            hsl(var(--border)) 1px,
+            transparent 1px
+        );
+        background-size: 24px 24px;
+    }
+    .ring-soft {
+        box-shadow:
+            0 1px 0 hsl(var(--border)),
+            0 1px 2px hsl(0 0% 0% / 0.04);
+    }
+    .anim-fade-in {
+        animation: fadeIn 0.4s ease-out both;
+    }
+    .anim-slide-up {
+        animation: slideUp 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+        }
+        to {
+            opacity: 1;
+        }
+    }
+    @keyframes slideUp {
+        from {
+            opacity: 0;
+            transform: translateY(8px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+}
+
+@layer base {
+    [data-debug-wrapper="true"] {
+        display: contents !important;
+    }
+}

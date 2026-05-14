@@ -1,0 +1,129 @@
+{
+  "theme": "light",
+  "archetype": "4 (Swiss & High-Contrast) + 1 (Clinical Private)",
+  "vibe": "modern, premium, technological, elegant, minimalist, fast, clean - Linear/Stripe inspired",
+  "typography": {
+    "font_family": {
+      "heading": "Geist, Satoshi, Inter, sans-serif",
+      "body": "Geist, Satoshi, Inter, sans-serif",
+      "mono": "Geist Mono, JetBrains Mono, monospace"
+    },
+    "scale": {
+      "h1": "text-3xl sm:text-4xl font-semibold tracking-tight text-slate-900 dark:text-white",
+      "h2": "text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900 dark:text-white",
+      "h3": "text-xl font-medium tracking-tight text-slate-900 dark:text-white",
+      "h4": "text-lg font-medium text-slate-800 dark:text-slate-100",
+      "body": "text-sm sm:text-base leading-relaxed text-slate-600 dark:text-slate-400",
+      "small": "text-xs font-medium uppercase tracking-[0.05em] text-slate-500"
+    }
+  },
+  "colors": {
+    "light": {
+      "background": "#F7F8FA",
+      "surface": "#FFFFFF",
+      "surface_hover": "#F1F5F9",
+      "primary": "#1A5F61",
+      "primary_hover": "#134E4A",
+      "text_main": "#0F172A",
+      "text_muted": "#64748B",
+      "border": "#E2E8F0",
+      "success": "#10B981",
+      "success_bg": "#D1FAE5",
+      "warning": "#F59E0B",
+      "warning_bg": "#FEF3C7",
+      "danger": "#EF4444",
+      "danger_bg": "#FEE2E2"
+    },
+    "dark": {
+      "background": "#0B0F15",
+      "surface": "#131822",
+      "surface_hover": "#1E2532",
+      "primary": "#4FD1C5",
+      "primary_hover": "#38B2AC",
+      "text_main": "#F8FAFC",
+      "text_muted": "#94A3B8",
+      "border": "#273142",
+      "success": "#34D399",
+      "success_bg": "rgba(16, 185, 129, 0.1)",
+      "warning": "#FBBF24",
+      "warning_bg": "rgba(245, 158, 11, 0.1)",
+      "danger": "#F87171",
+      "danger_bg": "rgba(239, 68, 68, 0.1)"
+    }
+  },
+  "spacing_and_layout": {
+    "dashboard_grid": "grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6",
+    "card_padding": "p-6",
+    "section_spacing": "py-8 md:py-12",
+    "container": "max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8",
+    "sidebar_width": "w-64"
+  },
+  "components": {
+    "cards": {
+      "style": "bg-white dark:bg-[#131822] border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm",
+      "header": "border-b border-slate-100 dark:border-slate-800 pb-4 mb-4"
+    },
+    "buttons": {
+      "primary": "bg-[#1A5F61] dark:bg-[#4FD1C5] text-white dark:text-slate-900 hover:bg-[#134E4A] dark:hover:bg-[#38B2AC] rounded-lg px-4 py-2 text-sm font-medium transition-all active:scale-95 shadow-sm",
+      "secondary": "bg-white dark:bg-[#131822] text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg px-4 py-2 text-sm font-medium transition-all active:scale-95",
+      "ghost": "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+    },
+    "sidebar": {
+      "style": "fixed left-0 top-0 h-screen w-64 border-r border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-[#0B0F15]/50 backdrop-blur-xl z-40",
+      "link_active": "flex items-center gap-3 px-3 py-2 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white font-medium transition-colors",
+      "link_inactive": "flex items-center gap-3 px-3 py-2 rounded-md text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+    },
+    "header": {
+      "style": "sticky top-0 h-16 border-b border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-[#0B0F15]/70 backdrop-blur-xl z-30 flex items-center justify-between px-6"
+    },
+    "tables": {
+      "container": "w-full overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800",
+      "header_cell": "bg-slate-50 dark:bg-[#131822] px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider border-b border-slate-200 dark:border-slate-800",
+      "row": "bg-white dark:bg-[#131822] hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors border-b border-slate-100 dark:border-slate-800/50 last:border-0",
+      "cell": "px-4 py-3 whitespace-nowrap text-sm text-slate-600 dark:text-slate-300"
+    },
+    "badges": {
+      "success": "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-400",
+      "warning": "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-500/10 dark:text-amber-400",
+      "neutral": "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-400"
+    }
+  },
+  "motion_and_microinteractions": {
+    "hover_state": "transition-colors duration-200 ease-in-out",
+    "click_state": "active:scale-95 transition-transform duration-100",
+    "fade_in": "animate-in fade-in duration-300",
+    "slide_in": "animate-in slide-in-from-bottom-4 duration-500 ease-out"
+  },
+  "media": {
+    "hero_login": {
+      "url": "https://images.unsplash.com/photo-1589554881701-3902036d4d04?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzN8MHwxfHNlYXJjaHwyfHxtb2Rlcm4lMjBwcml2YXRlJTIwZGVudGFsJTIwY2xpbmljJTIwaW50ZXJpb3IlMjBtaW5pbWFsJTIwbHV4dXJ5fGVufDB8fHx8MTc3ODE5ODcxMHww&ixlib=rb-4.1.0&q=85",
+      "description": "Modern minimal waiting area for login background"
+    },
+    "clinic_interior": {
+      "url": "https://images.pexels.com/photos/7789603/pexels-photo-7789603.jpeg",
+      "description": "Premium clinical interior for dashboard visual accents"
+    },
+    "equipment": {
+      "url": "https://images.unsplash.com/photo-1642844771937-23accb161a3d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Nzh8MHwxfHNlYXJjaHw0fHxtb2Rlcm4lMjBsdXh1cnklMjBkZW50YWwlMjBlcXVpcG1lbnQlMjBtaW5pbWFsfGVufDB8fHx8MTc3ODE5ODcxMHww&ixlib=rb-4.1.0&q=85",
+      "description": "Clean, modern dental equipment"
+    },
+    "doctor_avatar_1": {
+      "url": "https://images.unsplash.com/photo-1729162128021-f37dca3ff30d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA4Mzl8MHwxfHNlYXJjaHwzfHxkZW50aXN0JTIwZG9jdG9yJTIwcG9ydHJhaXR8ZW58MHx8fHwxNzc4MTk4NzI5fDA&ixlib=rb-4.1.0&q=85",
+      "description": "Professional male dentist"
+    },
+    "doctor_avatar_2": {
+      "url": "https://images.pexels.com/photos/12917343/pexels-photo-12917343.jpeg",
+      "description": "Professional female dentist"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Use Geist font via next/font or Google Fonts. If unavailable, use Satoshi or Inter.",
+    "Do NOT use thick borders or heavy box shadows. Rely on 1px borders (border-slate-200 or dark:border-slate-800) and soft #F7F8FA backgrounds to create layout hierarchy.",
+    "Implement Lucide React for all iconography. Keep icon size consistent (size={18} or size={20}) and stroke-width={1.5} for a premium, lightweight feel.",
+    "Ensure the sidebar uses a subtle glassmorphism effect if content scrolls behind it, or stick to a solid crisp background.",
+    "Dashboards must use the Bento grid strategy for widgets. Mix different heights/spans (col-span-1, col-span-2) to avoid visual monotony.",
+    "Tables should be built using Shadcn UI table primitive, but strip out any heavy borders. Use border-collapse and subtle row hover effects.",
+    "Data components (KPI cards, charts) must avoid full-screen gradients. Use solid colors with high contrast text and a subtle controlled teal accent.",
+    "Add data-testid attributes to all interactive elements for robust testing."
+  ]
+}

@@ -1,0 +1,7 @@
+export const doctors = [
+  { id: "d-1", name: "Dra. Sofía Reyes", specialty: "Ortodoncia", email: "sofia@bossdental.com.mx", phone: "+52 55 1234 5678", appointmentsThisMonth: 84, rating: 4.9, avatar: "https://images.pexels.com/photos/12917343/pexels-photo-12917343.jpeg?auto=compress&w=128", status: "Activo" },
+  { id: "d-2", name: "Dr. Ricardo Mora", specialty: "Endodoncia", email: "ricardo@bossdental.com.mx", phone: "+52 55 2345 6789", appointmentsThisMonth: 71, rating: 4.8, avatar: "https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=128&q=80", status: "Activo" },
+  { id: "d-3", name: "Dra. Ana Villarreal", specialty: "Estética dental", email: "ana@bossdental.com.mx", phone: "+52 55 3456 7890", appointmentsThisMonth: 65, rating: 4.9, avatar: "https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=128&q=80", status: "Activo" },
+  { id: "d-4", name: "Dr. Javier Núñez", specialty: "Implantología", email: "javier@bossdental.com.mx", phone: "+52 55 4567 8901", appointmentsThisMonth: 58, rating: 4.7, avatar: "https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=128&q=80", status: "Activo" },
+  { id: "d-5", name: "Dra. Lorena Pacheco", specialty: "Odontopediatría", email: "lorena@bossdental.com.mx", phone: "+52 55 5678 9012", appointmentsThisMonth: 49, rating: 4.8, avatar: "https://images.unsplash.com/photo-1594824476967-48c8b964273f?w=128&q=80", status: "Activo" },
+];

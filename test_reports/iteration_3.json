@@ -1,0 +1,30 @@
+{
+  "summary": "Beta 1.1 closure E2E tested via Playwright against REACT_APP_BACKEND_URL with localStorage cleared at start. Login (recepcionista + admin) OK. Agenda Mensual click on month-cell-YYYY-MM-DD switches to Diaria tab WITHOUT opening any drawer (month-day-drawer no longer exists, confirmed). CreateAppointmentDialog full new-patient flow: name + phone + clinical questionnaire (q-allergies-yes, q-chronic-no, q-medications-no) -> questionnaire-risk-badge appears on Sí. include-quotation-toggle opens initial-quotation-block; initial-quotation-add adds row; combobox initial-proc-{id} searches 'limp' and selects pr-2 (Limpieza dental); appt-reason combobox searches 'cons' and selects Consulta. Submit creates new patient (TEST_QA_*) with auto expediente, persists in /pacientes (localStorage), and opens patient detail with patient-risk-banner visible. Tab budget shows quotation-editor with real items (Limpieza). /pagos Listado: payments-listing-table renders all 10 expected columns (Expediente/Paciente/Concepto/Monto/Método/Fecha de pago/Registrado por/Saldo restante/Estado/Acciones); payment-row-{id} click navigates to /pacientes/{id}?tab=payments&highlight={paymentId}. cancel-payment-{id} opens admin-password-dialog (Admin123 gate). pays-register button on patient detail opens register-payment-dialog. /pagos Registrar nuevo: select Carlos shows last-five-payments and rp-view-record. Sidebar role guards verified: RECEPCIONISTA has NO nav-leads; ADMIN HAS nav-leads. theme-toggle present.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Header (login welcome toast)", "issues": ["Carry-over from prior iterations: 'Bienvenido' toast briefly overlaps user menu / theme-toggle area in bottom-right (~3-5s post-login). Non-blocking."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "clinicStore is now persisted to localStorage (resolves the prior iteration_2 limitation about page.goto wiping mock state) — verified: created TEST_QA_* patient survived SPA + nav and appeared correctly in /pacientes after route change.",
+    "AdminPasswordDialog still hardcodes 'Admin123' as the gate; expected for beta but should be env-driven for production.",
+    "Combobox (Popover+Command) data-testid pattern (appt-reason, appt-reason-input, appt-reason-option-{id}, appt-reason-create, initial-proc-{id}-option-pr-2, initial-proc-{id}-create) is consistent and Playwright-friendly.",
+    "PatientDetail.jsx (~260 lines) renders multiple dialogs (ChangeDoctor, CreateAppt, Reschedule, CancelAppt, RegisterPayment, CancelPayment) inline; consider grouping into a sub-component if it grows further.",
+    "RegisterPayment.jsx tr row uses event-target-bubbling check (`e.target.closest('button')`) to avoid accidental row-click navigation when clicking inline action buttons — correct pattern.",
+    "QuotationEditor admin-gated edit (admin-password-dialog → quotation-add-item → procedure-cb-{id} → quotation-save) verified visually; full edit-and-save round-trip not deeply asserted in this run because budget tab content rendered correctly with existing items.",
+    "Payment row click handler correctly skips when target is button or [role=combobox] — prevents misnavigation while confirm/cancel actions are in-row."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend-only mock app)", "frontend": "19/19 deterministic checks pass (~100%). One initial false-negative on payments_listing_columns was due to CSS text-transform: uppercase causing inner_text to return uppercase strings — actual <th> text content matches spec exactly."},
+  "test_credentials": "RECEPCIONISTA: recepcion@bossdental.com.mx / Recep123 ; ADMIN: admin@bossdental.com.mx / Admin123 ; Admin password gate: Admin123",
+  "seed_data_creation": "Created TEST_QA_<timestamp> patient via CreateAppointmentDialog new-patient tab with risk questionnaire (allergies=Sí) + initial cotización (Limpieza dental, pr-2). Persisted to localStorage and verified across SPA navigation. Recommend periodic localStorage.clear() before re-runs.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "clinicStore now persists to localStorage — page reloads keep state. To start clean: page.evaluate('localStorage.clear()') + page.reload(). Combobox testids: trigger=testId, search input=testId-input, options=testId-option-{value}, create new=testId-create. Procedure pr-2 = 'Limpieza dental' in catalog. Reasons rs-1..rs-* mapped from appointmentReasons mock. Patient seed includes p-1 Carlos Mendoza (with quotation Plan ortodoncia integral, 4 conceptos), p-4 Mariana Ortiz, p-9 first listed payment. cancel-payment row click + admin-password-dialog (Admin123) flow validated. month-day-drawer testid no longer exists (correctly removed).",
+  "rca_of_the_issue": "N/A — no functional issues detected this iteration. The single check that initially failed (payments_listing_columns) was purely a test-side string compare against CSS-uppercased text; not a product bug."
+}

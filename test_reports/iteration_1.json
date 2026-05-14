@@ -1,0 +1,28 @@
+{
+  "summary": "Frontend-only Boss Dental SPA tested end-to-end via Playwright against REACT_APP_BACKEND_URL. 39/41 checks passed. All 4 demo logins work, role-based routing/guards enforced (paciente blocked from /pacientes, dentista blocked from /doctores -> redirect to /dashboard), KPI cards render per role, sidebar nav-* testids work, patients table + search + detail tabs (treatments/appointments/payments/timeline/notes) work, agenda prev/next render, all paciente routes (/mi-cita, /mi-cuenta, /mi-presupuesto, /mi-tratamiento, /mi-carnet) render content, logout returns to /login. Theme toggle functionality works (verified by keyboard Enter -> localStorage persists 'dark' and html.dark class added) but the post-login welcome toast overlaps the theme-toggle button and intercepts mouse clicks for the first ~3-5 seconds after navigation.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Header / Toast notification", "issue": "Welcome toast (top-right) overlays the theme-toggle button after login/route change. Mouse clicks on theme-toggle during the toast lifetime are intercepted (toggle does not flip). Keyboard activation works. Recommend lowering toast z-index, moving toast container away from header buttons (e.g., bottom-right), or shortening toast duration.", "selector": "[data-testid=\"theme-toggle\"]", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Fix toast overlay so it does not cover header action buttons (theme-toggle, notifications). Either change Sonner/Toast position to bottom-right or set z-index lower than header / pointer-events:none on the wrapper."
+  ],
+  "critical_code_review_comments": [
+    "ThemeContext.jsx and Header.jsx implementation is correct; the toggle bug is purely a stacking/overlay issue from the welcome toast.",
+    "Mock auth + role guards in ProtectedRoute work correctly; both negative cases (paciente->/pacientes and dentista->/doctores) redirect to /dashboard as expected.",
+    "All required data-testids (login-*, kpi-*, nav-*, patients-table*, tab-*, agenda-*, theme-toggle, logout-button) are present and correctly named."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend-only mock app)", "frontend": "95% (39/41 checks; remaining issue is toast overlay on theme toggle)"},
+  "test_credentials": "admin@bossdental.com.mx/Admin123, recepcion@bossdental.com.mx/Recep123, dentista@bossdental.com.mx/Dentista123, paciente@bossdental.com.mx/Paciente123",
+  "seed_data_creation": "None - app uses static mock JSON under /app/frontend/src/mocks",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All flows tested. Only outstanding issue: toast overlay intercepts theme-toggle clicks. To verify a fix, either dismiss the toast first or click theme-toggle ~5s after login. Theme persistence works (localStorage key 'boss_dental_theme' stores 'light'/'dark'). All routes are SPA, no /api calls.",
+  "rca_of_the_issue": "Theme toggle: After login navigation, a Sonner-style toast 'Bienvenido, <name>' is rendered top-right with z-index above the header. The toast container's bounding box overlaps the theme-toggle Button (x≈1338, y≈14). Mouse click coordinates hit the toast wrapper instead of the button so React's onClick on the toggle never fires (verified: localStorage stayed 'light' after two mouse clicks, but flipped to 'dark' immediately when activating via keyboard Enter on the focused button). Mitigation: move toast position to bottom-right OR add pointer-events:none to the toast container's outer wrapper while keeping pointer-events:auto on the toast card."
+}
