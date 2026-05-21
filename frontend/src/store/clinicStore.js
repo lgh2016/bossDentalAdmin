@@ -127,15 +127,22 @@ const generateExpediente = () =>
 const createPatient = (data, actor) => {
   const id = nextId("patient", "p");
   const expediente = generateExpediente();
+  const fullName = data.name || [data.firstName, data.lastName].filter(Boolean).join(" ").trim();
   const newPatient = {
     id,
     expediente,
-    name: data.name,
+    name: fullName,
+    firstName: data.firstName || data.name || "",
+    lastName: data.lastName || "",
     email: data.email || "",
     phone: data.phone,
-    dob: data.dob || "1990-01-01",
-    age: data.age || (data.dob ? new Date().getFullYear() - new Date(data.dob).getFullYear() : 30),
+    dob: data.dob || data.birthDate || "1990-01-01",
+    birthDate: data.birthDate || data.dob || "1990-01-01",
+    age: data.age || (data.birthDate || data.dob ? new Date().getFullYear() - new Date(data.birthDate || data.dob).getFullYear() : 30),
     gender: data.gender || "M",
+    address: data.address || "",
+    emergencyContactName: data.emergencyContactName || "",
+    emergencyContactPhone: data.emergencyContactPhone || "",
     insurance: "Particular",
     branch: data.branch || "Ecatepec",
     lastVisit: new Date().toISOString().slice(0, 10),
@@ -145,7 +152,7 @@ const createPatient = (data, actor) => {
     totalBudget: 50,
     totalPaid: 0,
     altaDate: new Date().toISOString().slice(0, 10),
-    avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(data.name)}`,
+    avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(fullName)}`,
   };
   state.patients = [newPatient, ...state.patients];
   pushAudit({
