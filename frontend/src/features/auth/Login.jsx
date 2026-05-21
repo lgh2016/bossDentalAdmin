@@ -7,7 +7,10 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Sparkles, ArrowRight, Lock } from "lucide-react";
 import { toast } from "sonner";
-import { DEMO_USERS } from "@/constants/roles";
+import { DEMO_USERS, ROLES } from "@/constants/roles";
+
+// Solo el rol PATIENT sigue siendo demo/mock. Los demás autentican contra la API VPS.
+const VISIBLE_DEMO_USERS = DEMO_USERS.filter((u) => u.role === ROLES.PACIENTE);
 
 export default function Login() {
   const { login, loading } = useAuth();
@@ -15,8 +18,8 @@ export default function Login() {
   const location = useLocation();
   const from = location.state?.from?.pathname || "/dashboard";
 
-  const [email, setEmail] = useState("admin@bossdental.com.mx");
-  const [password, setPassword] = useState("Admin123");
+  const [email, setEmail] = useState("reception@bossdental.com");
+  const [password, setPassword] = useState("admin1234");
   const [error, setError] = useState("");
 
   const onSubmit = async (e) => {
@@ -104,7 +107,7 @@ export default function Login() {
                 </Button>
 
                 <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground pt-1">
-                  <Lock size={11} /> Conexión segura · JWT
+                  <Lock size={11} /> Conexión segura
                 </p>
               </form>
             </CardContent>
@@ -115,7 +118,7 @@ export default function Login() {
               Cuentas demo
             </p>
             <div className="grid grid-cols-2 gap-2">
-              {DEMO_USERS.map((u) => (
+              {VISIBLE_DEMO_USERS.map((u) => (
                 <button
                   key={u.id}
                   type="button"
