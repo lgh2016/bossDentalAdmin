@@ -69,11 +69,13 @@ function validateNewPatient(p) {
 
   if (!p.address?.trim()) errors.address = "Dirección requerida";
 
-  if (!p.emergencyContactName?.trim()) errors.emergencyContactName = "Requerido";
-  else if (!NAME_REGEX.test(p.emergencyContactName.trim())) errors.emergencyContactName = "Solo letras, acentos y Ñ";
-
-  if (!p.emergencyContactPhone) errors.emergencyContactPhone = "Requerido";
-  else if (!PHONE_REGEX.test(String(p.emergencyContactPhone))) errors.emergencyContactPhone = "10 dígitos numéricos";
+  // Contacto de emergencia OPCIONAL: solo validar formato si el usuario llenó algo.
+  if (p.emergencyContactName?.trim() && !NAME_REGEX.test(p.emergencyContactName.trim())) {
+    errors.emergencyContactName = "Solo letras, acentos y Ñ";
+  }
+  if (p.emergencyContactPhone && !PHONE_REGEX.test(String(p.emergencyContactPhone))) {
+    errors.emergencyContactPhone = "10 dígitos numéricos";
+  }
 
   return errors;
 }
@@ -100,6 +102,9 @@ export default function CreateAppointmentDialog({ open, onOpenChange, defaultDat
   // -------- Estado del flujo de creación de cita --------
   const [doctors, setDoctors] = useState([]);
   const [loadingDoctors, setLoadingDoctors] = useState(false);
+  // Cleanup de locks expirados al abrir el modal (FASE 2)
+  const [agendaReady, setAgendaReady] = useState(false);
+  const cleanupRanForOpen = useRef(false);
   const [doctorId, setDoctorId] = useState("");
   const [date, setDate] = useState(defaultDate || todayISO());
   const [startSlots, setStartSlots] = useState([]);
@@ -155,9 +160,30 @@ export default function CreateAppointmentDialog({ open, onOpenChange, defaultDat
     resetPatientForm();
   };
 
-  // ====== Doctores (al abrir modal) ======
+  // ====== Cleanup de locks expirados — una sola vez por apertura del modal (FASE 2) ======
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      cleanupRanForOpen.current = false;
+      setAgendaReady(false);
+      return;
+    }
+    if (cleanupRanForOpen.current) return;
+    cleanupRanForOpen.current = true;
+    setAgendaReady(false);
+    (async () => {
+      try {
+        await appointmentsApi.cleanupExpiredLocks();
+        setAgendaReady(true);
+      } catch {
+        setAgendaReady(false);
+        toast.error("No fue posible preparar la agenda. Cierra el modal e inténtalo nuevamente.");
+      }
+    })();
+  }, [open]);
+
+  // ====== Doctores (al abrir modal y tras limpieza de locks) ======
+  useEffect(() => {
+    if (!open || !agendaReady) return;
     let cancelled = false;
     (async () => {
       try {
@@ -174,7 +200,7 @@ export default function CreateAppointmentDialog({ open, onOpenChange, defaultDat
       }
     })();
     return () => { cancelled = true; };
-  }, [open]);
+  }, [open, agendaReady]);
 
   // ====== Búsqueda real de pacientes (debounced) ======
   const searchRequestId = useRef(0);
@@ -200,7 +226,7 @@ export default function CreateAppointmentDialog({ open, onOpenChange, defaultDat
   // ====== Start slots cuando paciente + doctor + fecha existen ======
   const startSlotsRequestId = useRef(0);
   useEffect(() => {
-    if (!selectedPatient || !doctorId || !date) {
+    if (!agendaReady || !selectedPatient || !doctorId || !date) {
       setStartSlots([]);
       return;
     }
@@ -221,7 +247,7 @@ export default function CreateAppointmentDialog({ open, onOpenChange, defaultDat
         if (myId === startSlotsRequestId.current) setLoadingStartSlots(false);
       }
     })();
-  }, [selectedPatient?.id, doctorId, date]);
+  }, [selectedPatient?.id, doctorId, date, agendaReady]);
 
   // ====== Handlers de cascada (resets) ======
   const onPatientSelect = useCallback((p) => {
@@ -231,19 +257,134 @@ export default function CreateAppointmentDialog({ open, onOpenChange, defaultDat
     resetAppointmentFlow();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const onDoctorChange = (v) => {
+  const onDoctorChange = async (v) => {
+    // Si ya existe un appointment bloqueado → PUT /appointments/{id}/dentist (sin crear nuevo lock).
+    if (appointmentId) {
+      const prevDoctorId = doctorId;
+      try {
+        setLocking(true);
+        await appointmentsApi.updateDentist(appointmentId, Number(v));
+        // OK → conservar appointmentId, actualizar doctor y limpiar horarios.
+        setDoctorId(v);
+        setStartTime("");
+        setEndSlots([]);
+        setEndTime("");
+        // El useEffect existente reconsulta /start-slots con el nuevo doctor automáticamente.
+      } catch (err) {
+        const msg = err?.response?.data?.message || err?.response?.data?.error || "";
+        const expired = /lock\s+has\s+expired/i.test(msg) || err?.response?.status === 410;
+        if (expired) {
+          toast.error("El bloqueo de la cita expiró. Reinicia la programación de la cita.");
+          // Reset al estado inicial del formulario (manteniendo paciente y fecha por UX).
+          setAppointmentId(null);
+          setDoctorId("");
+          setStartTime("");
+          setEndTime("");
+          setEndSlots([]);
+        } else {
+          toast.error("No fue posible actualizar el doctor");
+          // Revertir doctor visualmente; conservar appointmentId vigente.
+          setDoctorId(prevDoctorId);
+        }
+      } finally {
+        setLocking(false);
+      }
+      return;
+    }
+
+    // Sin appointmentId todavía → comportamiento original (flujo intacto).
     setDoctorId(v);
     setStartTime(""); setEndSlots([]); setEndTime(""); setAppointmentId(null);
   };
-  const onDateChange = (v) => {
+  const onDateChange = async (v) => {
+    // Si ya existe un appointment bloqueado → PUT /appointments/{id}/date (sin crear nuevo lock).
+    if (appointmentId) {
+      const prevDate = date;
+      try {
+        setLocking(true);
+        await appointmentsApi.updateDate(appointmentId, v);
+        // OK → conservar appointmentId, actualizar fecha y limpiar horarios.
+        setDate(v);
+        setStartTime("");
+        setEndSlots([]);
+        setEndTime("");
+        // El useEffect existente reconsulta /start-slots con la nueva fecha automáticamente.
+      } catch (err) {
+        const msg = err?.response?.data?.message || err?.response?.data?.error || "";
+        const expired = /lock\s+has\s+expired/i.test(msg) || err?.response?.status === 410;
+        if (expired) {
+          toast.error("El bloqueo de la cita expiró. Reinicia la programación de la cita.");
+          // Reset al estado inicial (conservando paciente y doctor por UX).
+          setAppointmentId(null);
+          setStartTime("");
+          setEndTime("");
+          setEndSlots([]);
+        } else {
+          toast.error("No fue posible actualizar la fecha");
+          setDate(prevDate);
+        }
+      } finally {
+        setLocking(false);
+      }
+      return;
+    }
+
+    // Sin appointmentId todavía → comportamiento original.
     setDate(v);
     setStartTime(""); setEndSlots([]); setEndTime(""); setAppointmentId(null);
   };
 
   const onStartTimeChange = async (v) => {
+    if (!v) {
+      setStartTime("");
+      setEndSlots([]); setEndTime(""); setAppointmentId(null);
+      return;
+    }
+
+    // Si ya hay un appointment bloqueado → actualizar la hora inicio del lock existente
+    // y obtener las horas fin disponibles vía GET /end-slots (sin crear nuevo lock).
+    if (appointmentId) {
+      const prevStart = startTime;
+      const prevEnd = endTime;
+      setStartTime(v);
+      // Limpia visualmente la hora fin; si la anterior sigue siendo válida (> nueva inicio), la conservamos.
+      setEndTime(prevEnd && prevEnd > v ? prevEnd : "");
+      try {
+        setLocking(true);
+        // Persistir nueva hora inicio en el appointment existente.
+        await appointmentsApi.updateStartTime(appointmentId, v);
+        // Pedir horas fin disponibles para esa hora inicio.
+        const data = await appointmentsApi.endSlots(appointmentId, v);
+        const slots = Array.isArray(data?.endSlots) ? data.endSlots : [];
+        setEndSlots(slots);
+        // Preseleccionar primera hora válida > nueva hora inicio (formato HH:mm).
+        const firstValid = slots.map(trimSec).find((s) => s > v) || trimSec(slots[0] || "");
+        setEndTime(firstValid);
+      } catch (err) {
+        const msg = err?.response?.data?.message || err?.response?.data?.error || "";
+        const expired = /lock\s+has\s+expired/i.test(msg) || err?.response?.status === 410;
+        if (expired) {
+          toast.error("El bloqueo de la cita expiró. Selecciona la hora inicio nuevamente.");
+          // Reset al estado previo a la selección de horario.
+          setAppointmentId(null);
+          setStartTime("");
+          setEndTime("");
+          setEndSlots([]);
+        } else {
+          toast.error("No fue posible actualizar la hora inicio");
+          // Revertir estado local para mantener consistencia con el backend.
+          setStartTime(prevStart);
+          setEndTime(prevEnd);
+        }
+      } finally {
+        setLocking(false);
+      }
+      return;
+    }
+
+    // Primer bloqueo: POST /appointments/lock (flujo existente, intacto).
     setStartTime(v);
     setEndSlots([]); setEndTime(""); setAppointmentId(null);
-    if (!v) return;
     try {
       setLocking(true);
       const lock = await appointmentsApi.lock({
@@ -329,7 +470,7 @@ export default function CreateAppointmentDialog({ open, onOpenChange, defaultDat
     e.preventDefault();
     setTouched({
       name: true, lastName: true, email: true, phone: true, gender: true,
-      birthDate: true, address: true, emergencyContactName: true, emergencyContactPhone: true,
+      birthDate: true, address: true,
     });
     if (!isPatientFormValid) {
       toast.error("Revisa los campos en rojo");
@@ -627,7 +768,7 @@ export default function CreateAppointmentDialog({ open, onOpenChange, defaultDat
                   {fieldError("address") && <p className="text-[11px] text-rose-500 mt-1">{patientErrors.address}</p>}
                 </div>
                 <div>
-                  <Label className="text-xs">Nombre de contacto de emergencia</Label>
+                  <Label className="text-xs">Nombre de contacto de emergencia <span className="text-muted-foreground">(opcional)</span></Label>
                   <Input
                     data-testid="new-patient-emergency-name"
                     value={newPatient.emergencyContactName}
@@ -638,7 +779,7 @@ export default function CreateAppointmentDialog({ open, onOpenChange, defaultDat
                   {fieldError("emergencyContactName") && <p className="text-[11px] text-rose-500 mt-1">{patientErrors.emergencyContactName}</p>}
                 </div>
                 <div>
-                  <Label className="text-xs">Teléfono de contacto de emergencia</Label>
+                  <Label className="text-xs">Teléfono de contacto de emergencia <span className="text-muted-foreground">(opcional)</span></Label>
                   <Input
                     data-testid="new-patient-emergency-phone"
                     inputMode="numeric"

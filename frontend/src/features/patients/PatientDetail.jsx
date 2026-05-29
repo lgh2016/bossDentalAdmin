@@ -27,7 +27,32 @@ export default function PatientDetail() {
   const { user } = useAuth();
   const { patients, appointments, payments, doctors } = useClinic();
 
-  const p = patients.find((x) => x.id === id);
+  // El backend aún no expone GET /patients/{id}. Mientras tanto, si el id de la URL
+  // no existe en el clinicStore (porque viene del listado real del WS), mostramos
+  // un placeholder visual usando un paciente dummy. NO se hace fetch, NO se rompe el flujo.
+  const realPatient = patients.find((x) => x.id === id);
+  const p = realPatient || {
+    id,
+    name: "Paciente",
+    expediente: `EXP-${new Date().getFullYear()}-${String(id).padStart(6, "0")}`,
+    altaDate: new Date().toISOString().slice(0, 10),
+    branch: "Ecatepec",
+    email: "",
+    phone: "",
+    dob: "1990-01-01",
+    age: 30,
+    gender: "—",
+    insurance: "Particular",
+    assignedDoctorId: null,
+    status: "Activo",
+    balance: 0,
+    totalBudget: 0,
+    totalPaid: 0,
+    avatar: null,
+    hasRisk: false,
+    _placeholder: true,
+  };
+
   const [createOpen, setCreateOpen] = useState(false);
   const [doctorOpen, setDoctorOpen] = useState(false);
   const [rescheduleAppt, setRescheduleAppt] = useState(null);
@@ -40,8 +65,6 @@ export default function PatientDetail() {
   useEffect(() => {
     const t = params.get("tab"); if (t) setTab(t);
   }, [params]);
-
-  if (!p) return <p className="text-sm text-muted-foreground">Paciente no encontrado.</p>;
 
   const apts = appointments.filter((a) => a.patientId === id).sort((a, b) => `${b.date}${b.time}`.localeCompare(`${a.date}${a.time}`));
   const pays = payments.filter((x) => x.patientId === id);

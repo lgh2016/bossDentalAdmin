@@ -1,11 +1,16 @@
 import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { Search, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 /**
  * Lightweight data table.
  * columns = [{ key, label, render?, className? }]
+ *
+ * Modos de búsqueda:
+ *  - Client-side: pasar `searchKeys` con la lista de campos a filtrar.
+ *  - Server-side: pasar `query`, `onQueryChange` (y NO `searchKeys`). El padre
+ *    es responsable de proveer `data` ya filtrada/paginada y opcionalmente `loading`.
  */
 export default function DataTable({
   data,
@@ -16,29 +21,44 @@ export default function DataTable({
   testId = "data-table",
   emptyText = "Sin resultados",
   rightSlot,
+  // Server-side opcional:
+  query,
+  onQueryChange,
+  loading = false,
+  loadingText = "Cargando…",
 }) {
-  const [q, setQ] = useState("");
+  const isServerSide = typeof onQueryChange === "function";
+  const [localQ, setLocalQ] = useState("");
+  const q = isServerSide ? (query ?? "") : localQ;
+
   const filtered = useMemo(() => {
+    if (isServerSide) return data;
     if (!q.trim()) return data;
     const lower = q.toLowerCase();
     return data.filter((row) =>
       searchKeys.some((k) => String(row[k] ?? "").toLowerCase().includes(lower)),
     );
-  }, [q, data, searchKeys]);
+  }, [isServerSide, q, data, searchKeys]);
+
+  const showSearch = isServerSide || searchKeys.length > 0;
+  const handleQ = (v) => (isServerSide ? onQueryChange(v) : setLocalQ(v));
 
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
       <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between p-3 border-b border-border">
-        {searchKeys.length > 0 ? (
+        {showSearch ? (
           <div className="relative w-full sm:w-80">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input
               data-testid={`${testId}-search`}
               value={q}
-              onChange={(e) => setQ(e.target.value)}
+              onChange={(e) => handleQ(e.target.value)}
               placeholder={searchPlaceholder}
               className="pl-9 h-9 bg-secondary/40"
             />
+            {isServerSide && loading && (
+              <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground animate-spin" />
+            )}
           </div>
         ) : <div />}
         {rightSlot}
@@ -61,7 +81,14 @@ export default function DataTable({
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 && (
+            {loading && filtered.length === 0 && (
+              <tr>
+                <td colSpan={columns.length} className="px-4 py-10 text-center text-muted-foreground text-sm">
+                  <Loader2 size={16} className="inline mr-2 animate-spin" />{loadingText}
+                </td>
+              </tr>
+            )}
+            {!loading && filtered.length === 0 && (
               <tr>
                 <td colSpan={columns.length} className="px-4 py-10 text-center text-muted-foreground text-sm">
                   {emptyText}
