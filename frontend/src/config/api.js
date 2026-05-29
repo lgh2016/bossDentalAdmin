@@ -24,7 +24,9 @@ export const API_ENDPOINTS = {
     base: "/appointments",
     startSlots: "/appointments/start-slots", // GET ?doctorId=&branchId=&date=
     lock: "/appointments/lock", // POST
-    // dinámicos: /appointments/{id}/end-time (PUT), /appointments/{id}/confirm (PUT)
+    cleanupExpiredLocks: "/appointments/cleanup-expired-locks", // POST
+    // dinámicos: /appointments/{id}/end-time (PUT), /appointments/{id}/confirm (PUT),
+    //           /appointments/{id}/end-slots (GET ?startTime=)
   },
 };
 

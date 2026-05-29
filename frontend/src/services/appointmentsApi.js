@@ -16,12 +16,58 @@ export const appointmentsApi = {
     return data;
   },
 
+  /**
+   * GET /appointments/{id}/end-slots?startTime=HH:mm
+   * Devuelve { appointmentId, startTime, endSlots[] }
+   * Sólo se usa cuando ya existe un appointmentId (cita en edición).
+   */
+  async endSlots(appointmentId, startTime) {
+    const { data } = await httpClient.get(
+      `${API_ENDPOINTS.appointments.base}/${appointmentId}/end-slots`,
+      { params: { startTime } },
+    );
+    return data;
+  },
+
   /** PUT /appointments/{id}/end-time */
   async updateEndTime(appointmentId, endTime) {
     const { data } = await httpClient.put(
       `${API_ENDPOINTS.appointments.base}/${appointmentId}/end-time`,
       { endTime },
     );
+    return data;
+  },
+
+  /** PUT /appointments/{id}/start-time — actualiza la hora inicio sobre un lock existente */
+  async updateStartTime(appointmentId, startTime) {
+    const { data } = await httpClient.put(
+      `${API_ENDPOINTS.appointments.base}/${appointmentId}/start-time`,
+      { startTime },
+    );
+    return data;
+  },
+
+  /** PUT /appointments/{id}/dentist — cambia el doctor sobre un lock existente */
+  async updateDentist(appointmentId, dentistId) {
+    const { data } = await httpClient.put(
+      `${API_ENDPOINTS.appointments.base}/${appointmentId}/dentist`,
+      { dentistId },
+    );
+    return data;
+  },
+
+  /** PUT /appointments/{id}/date — cambia la fecha sobre un lock existente */
+  async updateDate(appointmentId, appointmentDate) {
+    const { data } = await httpClient.put(
+      `${API_ENDPOINTS.appointments.base}/${appointmentId}/date`,
+      { appointmentDate },
+    );
+    return data;
+  },
+
+  /** POST /appointments/cleanup-expired-locks — limpia locks zombis al abrir el modal */
+  async cleanupExpiredLocks() {
+    const { data } = await httpClient.post(API_ENDPOINTS.appointments.cleanupExpiredLocks);
     return data;
   },
 
