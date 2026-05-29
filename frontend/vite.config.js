@@ -31,8 +31,9 @@ export default defineConfig({
     strictPort: true,
     // HMR a través del ingress de Emergent (https/wss en 443)
     hmr: {
-      clientPort: 443,
-      protocol: "wss",
+      protocol: "ws",
+      host: "localhost",
+      port: 3000,
     },
     // Permitir el host del preview público de Emergent
     allowedHosts: true,

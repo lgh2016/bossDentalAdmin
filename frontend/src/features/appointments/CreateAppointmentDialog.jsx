@@ -231,19 +231,125 @@ export default function CreateAppointmentDialog({ open, onOpenChange, defaultDat
     resetAppointmentFlow();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const onDoctorChange = (v) => {
+  const onDoctorChange = async (v) => {
+    // Si ya existe un appointment bloqueado → PUT /appointments/{id}/dentist (sin crear nuevo lock).
+    if (appointmentId) {
+      const prevDoctorId = doctorId;
+      try {
+        setLocking(true);
+        await appointmentsApi.updateDentist(appointmentId, Number(v));
+        // OK → conservar appointmentId, actualizar doctor y limpiar horarios.
+        setDoctorId(v);
+        setStartTime("");
+        setEndSlots([]);
+        setEndTime("");
+        // El useEffect existente reconsulta /start-slots con el nuevo doctor automáticamente.
+      } catch (err) {
+        const msg = err?.response?.data?.message || err?.response?.data?.error || "";
+        const expired = /lock\s+has\s+expired/i.test(msg) || err?.response?.status === 410;
+        if (expired) {
+          toast.error("El bloqueo de la cita expiró. Reinicia la programación de la cita.");
+          // Reset al estado inicial del formulario (manteniendo paciente y fecha por UX).
+          setAppointmentId(null);
+          setDoctorId("");
+          setStartTime("");
+          setEndTime("");
+          setEndSlots([]);
+        } else {
+          toast.error("No fue posible actualizar el doctor");
+          // Revertir doctor visualmente; conservar appointmentId vigente.
+          setDoctorId(prevDoctorId);
+        }
+      } finally {
+        setLocking(false);
+      }
+      return;
+    }
+
+    // Sin appointmentId todavía → comportamiento original (flujo intacto).
     setDoctorId(v);
     setStartTime(""); setEndSlots([]); setEndTime(""); setAppointmentId(null);
   };
-  const onDateChange = (v) => {
+  const onDateChange = async (v) => {
+    // Si ya existe un appointment bloqueado → PUT /appointments/{id}/date (sin crear nuevo lock).
+    if (appointmentId) {
+      const prevDate = date;
+      try {
+        setLocking(true);
+        await appointmentsApi.updateDate(appointmentId, v);
+        // OK → conservar appointmentId, actualizar fecha y limpiar horarios.
+        setDate(v);
+        setStartTime("");
+        setEndSlots([]);
+        setEndTime("");
+        // El useEffect existente reconsulta /start-slots con la nueva fecha automáticamente.
+      } catch (err) {
+        const msg = err?.response?.data?.message || err?.response?.data?.error || "";
+        const expired = /lock\s+has\s+expired/i.test(msg) || err?.response?.status === 410;
+        if (expired) {
+          toast.error("El bloqueo de la cita expiró. Reinicia la programación de la cita.");
+          // Reset al estado inicial (conservando paciente y doctor por UX).
+          setAppointmentId(null);
+          setStartTime("");
+          setEndTime("");
+          setEndSlots([]);
+        } else {
+          toast.error("No fue posible actualizar la fecha");
+          setDate(prevDate);
+        }
+      } finally {
+        setLocking(false);
+      }
+      return;
+    }
+
+    // Sin appointmentId todavía → comportamiento original.
     setDate(v);
     setStartTime(""); setEndSlots([]); setEndTime(""); setAppointmentId(null);
   };
 
   const onStartTimeChange = async (v) => {
+    if (!v) {
+      setStartTime("");
+      setEndSlots([]); setEndTime(""); setAppointmentId(null);
+      return;
+    }
+
+    // Si ya hay un appointment bloqueado → SOLO actualizar la hora inicio del lock existente.
+    if (appointmentId) {
+      const prevStart = startTime;
+      const prevEnd = endTime;
+      setStartTime(v);
+      // Limpia visualmente la hora fin; si la anterior sigue siendo válida (> nueva inicio), la conservamos.
+      setEndTime(prevEnd && prevEnd > v ? prevEnd : "");
+      try {
+        setLocking(true);
+        await appointmentsApi.updateStartTime(appointmentId, v);
+      } catch (err) {
+        const msg = err?.response?.data?.message || err?.response?.data?.error || "";
+        const expired = /lock\s+has\s+expired/i.test(msg) || err?.response?.status === 410;
+        if (expired) {
+          toast.error("El bloqueo de la cita expiró. Selecciona la hora inicio nuevamente.");
+          // Reset al estado previo a la selección de horario.
+          setAppointmentId(null);
+          setStartTime("");
+          setEndTime("");
+          setEndSlots([]);
+        } else {
+          toast.error("No fue posible actualizar la hora inicio");
+          // Revertir estado local para mantener consistencia con el backend.
+          setStartTime(prevStart);
+          setEndTime(prevEnd);
+        }
+      } finally {
+        setLocking(false);
+      }
+      return;
+    }
+
+    // Primer bloqueo: POST /appointments/lock (flujo existente, intacto).
     setStartTime(v);
     setEndSlots([]); setEndTime(""); setAppointmentId(null);
-    if (!v) return;
     try {
       setLocking(true);
       const lock = await appointmentsApi.lock({

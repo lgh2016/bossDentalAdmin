@@ -4,7 +4,7 @@
  */
 const fromEnv = import.meta.env.VITE_API_BASE_URL;
 
-export const API_BASE_URL = (fromEnv || "https://api.bossdental.com.mx").replace(/\/+$/, "");
+export const API_BASE_URL = (fromEnv || "http://localhost:8081").replace(/\/+$/, "");
 
 // Endpoints relativos. Concatenarse con httpClient (baseURL = API_BASE_URL)
 export const API_ENDPOINTS = {

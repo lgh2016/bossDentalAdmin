@@ -25,6 +25,33 @@ export const appointmentsApi = {
     return data;
   },
 
+  /** PUT /appointments/{id}/start-time — actualiza la hora inicio sobre un lock existente */
+  async updateStartTime(appointmentId, startTime) {
+    const { data } = await httpClient.put(
+      `${API_ENDPOINTS.appointments.base}/${appointmentId}/start-time`,
+      { startTime },
+    );
+    return data;
+  },
+
+  /** PUT /appointments/{id}/dentist — cambia el doctor sobre un lock existente */
+  async updateDentist(appointmentId, dentistId) {
+    const { data } = await httpClient.put(
+      `${API_ENDPOINTS.appointments.base}/${appointmentId}/dentist`,
+      { dentistId },
+    );
+    return data;
+  },
+
+  /** PUT /appointments/{id}/date — cambia la fecha sobre un lock existente */
+  async updateDate(appointmentId, appointmentDate) {
+    const { data } = await httpClient.put(
+      `${API_ENDPOINTS.appointments.base}/${appointmentId}/date`,
+      { appointmentDate },
+    );
+    return data;
+  },
+
   /** PUT /appointments/{id}/confirm */
   async confirm(appointmentId, payload) {
     const { data } = await httpClient.put(
