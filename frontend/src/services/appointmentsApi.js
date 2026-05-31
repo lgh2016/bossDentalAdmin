@@ -71,6 +71,28 @@ export const appointmentsApi = {
     return data;
   },
 
+  /** GET /appointments/schedule/month?year=&month=&branchId=&dentistId= */
+  async scheduleMonth({ year, month, branchId = 1, dentistId }) {
+    const params = { year, month, branchId };
+    if (dentistId != null) params.dentistId = dentistId;
+    const { data } = await httpClient.get(API_ENDPOINTS.appointments.scheduleMonth, { params });
+    return data;
+  },
+
+  /** GET /appointments/schedule/day?date=&branchId=&dentistId= */
+  async scheduleDay({ date, branchId = 1, dentistId }) {
+    const params = { date, branchId };
+    if (dentistId != null) params.dentistId = dentistId;
+    const { data } = await httpClient.get(API_ENDPOINTS.appointments.scheduleDay, { params });
+    return data;
+  },
+
+  /** GET /appointments/{id} — detalle de la cita */
+  async getById(appointmentId) {
+    const { data } = await httpClient.get(`${API_ENDPOINTS.appointments.base}/${appointmentId}`);
+    return data;
+  },
+
   /** PUT /appointments/{id}/confirm */
   async confirm(appointmentId, payload) {
     const { data } = await httpClient.put(

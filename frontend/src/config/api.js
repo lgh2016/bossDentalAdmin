@@ -25,8 +25,14 @@ export const API_ENDPOINTS = {
     startSlots: "/appointments/start-slots", // GET ?doctorId=&branchId=&date=
     lock: "/appointments/lock", // POST
     cleanupExpiredLocks: "/appointments/cleanup-expired-locks", // POST
-    // dinámicos: /appointments/{id}/end-time (PUT), /appointments/{id}/confirm (PUT),
-    //           /appointments/{id}/end-slots (GET ?startTime=)
+    scheduleMonth: "/appointments/schedule/month", // GET ?year=&month=&branchId=&dentistId=
+    scheduleDay: "/appointments/schedule/day", // GET ?date=&branchId=&dentistId=
+    // dinámicos: /appointments/{id} (GET detalle), /appointments/{id}/end-time (PUT),
+    //           /appointments/{id}/confirm (PUT), /appointments/{id}/end-slots (GET ?startTime=)
+  },
+  dashboard: {
+    todayCount: "/api/dashboard/appointments/today/count", // GET
+    todayPaged: "/api/dashboard/appointments/today", // GET ?page=&size=
   },
 };
 
