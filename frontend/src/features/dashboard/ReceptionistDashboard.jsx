@@ -1,5 +1,6 @@
+import { useEffect, useState } from "react";
 import { CalendarDays, UserPlus, MessageSquare, Receipt, Plus, ChevronRight } from "lucide-react";
-import { useState } from "react";
+import { Link } from "react-router-dom";
 import PageHeader from "@/shared/PageHeader";
 import KpiCard from "@/shared/KpiCard";
 import Section from "@/shared/Section";
@@ -9,18 +10,31 @@ import { useAuth } from "@/context/AuthContext";
 import { useClinic } from "@/store/clinicStore";
 import { followUps } from "@/mocks";
 import { formatDateLong, currencyMXN } from "@/utils/format";
-import { Link } from "react-router-dom";
 import CreateAppointmentDialog from "@/features/appointments/CreateAppointmentDialog";
+import TodayAgendaSection from "./TodayAgendaSection";
+import { dashboardApi } from "@/services/dashboardApi";
 
 export default function ReceptionistDashboard() {
   const { user } = useAuth();
-  const { appointments, payments, patients } = useClinic();
+  const { payments, patients } = useClinic();
   const [createOpen, setCreateOpen] = useState(false);
+  const [citasHoy, setCitasHoy] = useState(null); // null = cargando
   const today = new Date().toISOString().slice(0, 10);
-  const todayAppointments = appointments.filter((a) => a.date === today);
-  const arrived = todayAppointments.filter((a) => a.hasArrived).length;
   const pendingPayments = payments.filter((p) => p.status === "Pendiente").length;
   const newPatientsThisMonth = patients.length;
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await dashboardApi.todayCount();
+        if (!cancelled) setCitasHoy(data?.total ?? 0);
+      } catch {
+        if (!cancelled) setCitasHoy(0);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   return (
     <div className="space-y-8">
@@ -37,32 +51,14 @@ export default function ReceptionistDashboard() {
       />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard testId="kpi-citas-hoy" label="Citas hoy" value={todayAppointments.length} icon={CalendarDays} accent />
-        <KpiCard label="Pacientes llegaron" value={arrived} icon={UserPlus} />
-        <KpiCard label="WhatsApp enviados" value={42} icon={MessageSquare} />
+        <KpiCard testId="kpi-citas-hoy" label="Citas hoy" value={citasHoy ?? "…"} icon={CalendarDays} accent />
+        <KpiCard label="Pacientes llegaron" value={"—"} icon={UserPlus} />
+        <KpiCard label="WhatsApp enviados" value={"—"} icon={MessageSquare} />
         <KpiCard label="Pagos pendientes" value={pendingPayments} icon={Receipt} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Section
-          className="lg:col-span-2"
-          title="Agenda de hoy"
-          action={<Link to="/agenda" className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1">Abrir agenda <ChevronRight size={12} /></Link>}
-        >
-          <div className="divide-y divide-border">
-            {todayAppointments.map((a) => (
-              <Link key={a.id} to={`/pacientes/${a.patientId}`} className="flex items-center gap-4 py-3 first:pt-0 last:pb-0 hover:bg-secondary/30 -mx-2 px-2 rounded-md transition-colors">
-                <div className="w-14 text-sm font-mono">{a.time}</div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{a.patientName}</p>
-                  <p className="text-xs text-muted-foreground truncate">{a.type} · {a.doctorName} · {a.branch}</p>
-                </div>
-                <StatusBadge value={a.status} />
-              </Link>
-            ))}
-            {todayAppointments.length === 0 && <p className="text-sm text-muted-foreground py-6 text-center">Sin citas para hoy.</p>}
-          </div>
-        </Section>
+        <TodayAgendaSection />
 
         <Section title="Seguimientos">
           <ul className="space-y-3">

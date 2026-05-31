@@ -22,4 +22,10 @@ export const patientsApi = {
     });
     return data;
   },
+
+  /** GET /patients/{id}/detail → { data, success, message } */
+  async getDetail(id) {
+    const { data } = await httpClient.get(`${API_ENDPOINTS.patients.list}/${id}/detail`);
+    return data?.data ?? null;
+  },
 };

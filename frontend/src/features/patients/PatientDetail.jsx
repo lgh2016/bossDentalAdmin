@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, Link, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Phone, Mail, Calendar, Stethoscope, FileText, Receipt, Activity, IdCard, MapPin, RefreshCw, Pencil, UserCheck, Plus, ShieldAlert, X, ReceiptText } from "lucide-react";
+import { ArrowLeft, Phone, Mail, Calendar, Stethoscope, FileText, Receipt, Activity, IdCard, MapPin, RefreshCw, Pencil, UserCheck, Plus, ShieldAlert, X, ReceiptText, Loader2 } from "lucide-react";
 import PageHeader from "@/shared/PageHeader";
 import StatusBadge from "@/shared/StatusBadge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { useClinic, clinicStore } from "@/store/clinicStore";
 import { useAuth } from "@/context/AuthContext";
 import { treatments } from "@/mocks";
-import { currencyMXN, initials, formatDateLong } from "@/utils/format";
+import { currencyMXN, formatDateLong } from "@/utils/format";
 import { ROLES } from "@/constants/roles";
 import ChangeDoctorDialog from "@/features/appointments/ChangeDoctorDialog";
 import CreateAppointmentDialog from "@/features/appointments/CreateAppointmentDialog";
@@ -19,39 +19,45 @@ import RegisterPaymentDialog from "@/features/payments/RegisterPaymentDialog";
 import CancelPaymentDialog from "@/features/payments/CancelPaymentDialog";
 import QuotationEditor from "@/features/quotations/QuotationEditor";
 import PatientHistory from "./PatientHistory";
+import { patientsApi } from "@/services/patientsApi";
 import { cn } from "@/lib/utils";
+
+const trimSec = (t) => (t ? String(t).slice(0, 5) : "");
+const apptLabel = (ap) => {
+  if (!ap) return null;
+  const date = ap.date || ap.appointmentDate;
+  const time = trimSec(ap.startTime || ap.time);
+  const reason = ap.reason || ap.type || "";
+  return [date, time, reason].filter(Boolean).join(" · ");
+};
 
 export default function PatientDetail() {
   const { id } = useParams();
   const [params] = useSearchParams();
   const { user } = useAuth();
-  const { patients, appointments, payments, doctors } = useClinic();
+  const { appointments, payments } = useClinic();
 
-  // El backend aún no expone GET /patients/{id}. Mientras tanto, si el id de la URL
-  // no existe en el clinicStore (porque viene del listado real del WS), mostramos
-  // un placeholder visual usando un paciente dummy. NO se hace fetch, NO se rompe el flujo.
-  const realPatient = patients.find((x) => x.id === id);
-  const p = realPatient || {
-    id,
-    name: "Paciente",
-    expediente: `EXP-${new Date().getFullYear()}-${String(id).padStart(6, "0")}`,
-    altaDate: new Date().toISOString().slice(0, 10),
-    branch: "Ecatepec",
-    email: "",
-    phone: "",
-    dob: "1990-01-01",
-    age: 30,
-    gender: "—",
-    insurance: "Particular",
-    assignedDoctorId: null,
-    status: "Activo",
-    balance: 0,
-    totalBudget: 0,
-    totalPaid: 0,
-    avatar: null,
-    hasRisk: false,
-    _placeholder: true,
-  };
+  // Detalle real del paciente desde el WS.
+  const [detail, setDetail] = useState(null);
+  const [loadingDetail, setLoadingDetail] = useState(true);
+  const [detailError, setDetailError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingDetail(true);
+    setDetailError(null);
+    (async () => {
+      try {
+        const d = await patientsApi.getDetail(id);
+        if (!cancelled) setDetail(d);
+      } catch {
+        if (!cancelled) setDetailError("No fue posible cargar el detalle del paciente.");
+      } finally {
+        if (!cancelled) setLoadingDetail(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [id]);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [doctorOpen, setDoctorOpen] = useState(false);
@@ -66,13 +72,35 @@ export default function PatientDetail() {
     const t = params.get("tab"); if (t) setTab(t);
   }, [params]);
 
+  // Datos del store local sólo se usan en las pestañas que aún no migran al WS.
   const apts = appointments.filter((a) => a.patientId === id).sort((a, b) => `${b.date}${b.time}`.localeCompare(`${a.date}${a.time}`));
   const pays = payments.filter((x) => x.patientId === id);
   const treats = treatments.filter((t) => t.patientId === id);
-  const doctor = doctors.find((d) => d.id === p.assignedDoctorId);
   const today = new Date().toISOString().slice(0, 10);
-  const nextAppt = apts.find((a) => a.date >= today && a.status !== "Cancelada");
+  const nextApptLocal = apts.find((a) => a.date >= today && a.status !== "Cancelada");
+
+  // Placeholder para tabs que aún no consumen su WS propio.
+  const p = {
+    id,
+    name: detail?.fullName || "Paciente",
+    expediente: detail?.expedientNumber || `EXP-${new Date().getFullYear()}-${String(id).padStart(6, "0")}`,
+    branch: detail?.location || "—",
+    email: detail?.email || "",
+    phone: detail?.phone || "",
+    age: detail?.age ?? 0,
+    gender: detail?.gender || "—",
+    insurance: "Particular",
+    status: "Activo",
+    balance: detail?.balance ?? 0,
+    totalBudget: detail?.totalBudgeted ?? 0,
+    totalPaid: detail?.paidAmount ?? 0,
+    assignedDoctorId: null,
+    hasRisk: false,
+  };
   const isReceptionist = user.role === ROLES.RECEPCIONISTA;
+
+  const nextApptLabel = apptLabel(detail?.nextAppointment) || "Sin programar";
+  const prevApptLabel = apptLabel(detail?.previousAppointment) || "Sin registro";
 
   return (
     <div className="space-y-6">
@@ -83,14 +111,22 @@ export default function PatientDetail() {
       <PageHeader
         eyebrow={`Expediente ${p.expediente}`}
         title={p.name}
-        subtitle={`Activo desde ${formatDateLong(p.altaDate)} · Sucursal ${p.branch}`}
+        subtitle={detail
+          ? `Activo desde ${formatDateLong(detail.createdAt || today)} · Sucursal ${detail.location || "—"}`
+          : (loadingDetail ? "Cargando detalle…" : (detailError || ""))}
         actions={
           <>
             <Button variant="outline" size="sm" onClick={() => setCreateOpen(true)} data-testid="patient-create-appt"><Plus size={13} className="mr-1" /> Crear cita</Button>
-            <Button variant="outline" size="sm" onClick={() => setDoctorOpen(true)} disabled={!nextAppt} data-testid="patient-change-doctor"><RefreshCw size={13} className="mr-1" /> {nextAppt?.doctorId ? "Cambiar doctor" : "Asignar doctor"}</Button>
+            <Button variant="outline" size="sm" onClick={() => setDoctorOpen(true)} disabled={!nextApptLocal} data-testid="patient-change-doctor"><RefreshCw size={13} className="mr-1" /> {nextApptLocal?.doctorId ? "Cambiar doctor" : "Asignar doctor"}</Button>
           </>
         }
       />
+
+      {detailError && !loadingDetail && (
+        <div className="rounded-lg border border-rose-500/30 bg-rose-500/5 p-3 text-sm text-rose-600 dark:text-rose-400">
+          {detailError}
+        </div>
+      )}
 
       {p.hasRisk && (
         <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 flex items-center gap-2 text-amber-700 dark:text-amber-400 text-sm" data-testid="patient-risk-banner">
@@ -100,30 +136,39 @@ export default function PatientDetail() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="rounded-xl border border-border bg-card p-5">
-          <div className="flex items-center gap-3">
-            <Avatar className="size-14"><AvatarImage src={p.avatar} /><AvatarFallback>{initials(p.name)}</AvatarFallback></Avatar>
-            <div>
-              <p className="font-medium">{p.name}</p>
-              <p className="text-xs text-muted-foreground">{p.gender === "M" ? "Masculino" : "Femenino"} · {p.age} años</p>
-            </div>
-          </div>
-          <ul className="mt-5 space-y-2 text-sm">
-            <li className="flex items-center gap-2 text-muted-foreground"><Mail size={13} /><span className="text-foreground">{p.email || "—"}</span></li>
-            <li className="flex items-center gap-2 text-muted-foreground"><Phone size={13} /><span className="text-foreground font-mono text-xs">{p.phone}</span></li>
-            <li className="flex items-center gap-2 text-muted-foreground"><MapPin size={13} /><span className="text-foreground">{p.branch}</span></li>
-            <li className="flex items-center gap-2 text-muted-foreground"><Stethoscope size={13} /><span className="text-foreground">{doctor?.name || "Sin asignar"}</span></li>
-          </ul>
-          <div className="mt-5 grid grid-cols-2 gap-2">
-            <div className="rounded-lg border border-border p-3"><p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">Saldo</p><p className="text-lg font-semibold mt-1">{currencyMXN(p.balance)}</p></div>
-            <div className="rounded-lg border border-border p-3"><p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">Pagado</p><p className="text-lg font-semibold mt-1">{currencyMXN(p.totalPaid)}</p></div>
-            <div className="rounded-lg border border-border p-3 col-span-2"><p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">Total presupuestado</p><p className="text-lg font-semibold mt-1">{currencyMXN(p.totalBudget)}</p></div>
-          </div>
-          {nextAppt && (
-            <div className="mt-4 rounded-lg border border-primary/30 bg-primary/5 p-3">
-              <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">Próxima cita</p>
-              <p className="text-sm font-medium mt-1">{nextAppt.date} · {nextAppt.time}</p>
-              <p className="text-xs text-muted-foreground">{nextAppt.type} · {nextAppt.doctorName}</p>
-            </div>
+          {loadingDetail && !detail ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 size={14} className="animate-spin" /> Cargando…</div>
+          ) : (
+            <>
+              <div className="flex items-center gap-3">
+                <Avatar className="size-14">
+                  {detail?.avatarUrl ? <AvatarImage src={detail.avatarUrl} /> : null}
+                  <AvatarFallback>{detail?.initials || "—"}</AvatarFallback>
+                </Avatar>
+                <div>
+                  <p className="font-medium">{p.name}</p>
+                  <p className="text-xs text-muted-foreground">{p.gender} · {p.age} años</p>
+                </div>
+              </div>
+              <ul className="mt-5 space-y-2 text-sm">
+                <li className="flex items-center gap-2 text-muted-foreground"><Mail size={13} /><span className="text-foreground">{p.email || "—"}</span></li>
+                <li className="flex items-center gap-2 text-muted-foreground"><Phone size={13} /><span className="text-foreground font-mono text-xs">{p.phone || "—"}</span></li>
+                <li className="flex items-center gap-2 text-muted-foreground"><MapPin size={13} /><span className="text-foreground">{p.branch}</span></li>
+                <li className="flex items-center gap-2 text-muted-foreground"><Stethoscope size={13} /><span className="text-foreground">{detail?.doctorName || "Sin asignar"}</span></li>
+              </ul>
+              <div className="mt-5 grid grid-cols-2 gap-2">
+                <div className="rounded-lg border border-border p-3"><p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">Saldo</p><p className="text-lg font-semibold mt-1">{currencyMXN(p.balance)}</p></div>
+                <div className="rounded-lg border border-border p-3"><p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">Pagado</p><p className="text-lg font-semibold mt-1">{currencyMXN(p.totalPaid)}</p></div>
+                <div className="rounded-lg border border-border p-3 col-span-2"><p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">Total presupuestado</p><p className="text-lg font-semibold mt-1">{currencyMXN(p.totalBudget)}</p></div>
+              </div>
+              {detail?.nextAppointment && (
+                <div className="mt-4 rounded-lg border border-primary/30 bg-primary/5 p-3">
+                  <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">Próxima cita</p>
+                  <p className="text-sm font-medium mt-1">{detail.nextAppointment.date || detail.nextAppointment.appointmentDate} · {trimSec(detail.nextAppointment.startTime || detail.nextAppointment.time)}</p>
+                  <p className="text-xs text-muted-foreground">{detail.nextAppointment.reason || detail.nextAppointment.type || ""}</p>
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -142,12 +187,13 @@ export default function PatientDetail() {
 
             <TabsContent value="summary" className="mt-4 grid grid-cols-2 gap-3">
               {[
-                { l: "Próxima cita", v: nextAppt ? `${nextAppt.date} · ${nextAppt.time}` : "Sin programar" },
-                { l: "Doctor asignado", v: doctor?.name || "Sin asignar" },
-                { l: "Tratamiento actual", v: treats[0]?.name || "—" },
-                { l: "Estado", v: p.status },
-                { l: "Cobertura", v: p.insurance },
-                { l: "Sucursal", v: p.branch },
+                { l: "Próxima cita", v: nextApptLabel },
+                { l: "Cita anterior", v: prevApptLabel },
+                { l: "Doctor asignado", v: detail?.doctorName || "Sin asignar" },
+                { l: "Sucursal", v: detail?.location || "—" },
+                { l: "Estado", v: "Activo" },
+                { l: "Cobertura", v: "Particular" },
+                { l: "Tratamiento actual", v: "—" },
               ].map((x, i) => (
                 <div key={i} className="rounded-lg border border-border p-3">
                   <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">{x.l}</p>
@@ -175,9 +221,9 @@ export default function PatientDetail() {
                     <div><p className="opacity-70">Horario</p><p className="font-medium">L-S 9:00-19:00</p></div>
                     <div className="col-span-2 pt-2 border-t border-white/20">
                       <p className="opacity-70">Próxima cita</p>
-                      <p className="font-medium">{nextAppt ? `${nextAppt.date} · ${nextAppt.time}` : "Sin programar"}</p>
+                      <p className="font-medium">{nextApptLabel}</p>
                     </div>
-                    <div><p className="opacity-70">Doctor</p><p className="font-medium">{doctor?.name || "—"}</p></div>
+                    <div><p className="opacity-70">Doctor</p><p className="font-medium">{detail?.doctorName || "—"}</p></div>
                     <div><p className="opacity-70">Saldo</p><p className="font-medium">{currencyMXN(p.balance)}</p></div>
                   </div>
                 </div>
@@ -273,7 +319,7 @@ export default function PatientDetail() {
         </div>
       </div>
 
-      <ChangeDoctorDialog open={doctorOpen} onOpenChange={setDoctorOpen} appointment={nextAppt} />
+      <ChangeDoctorDialog open={doctorOpen} onOpenChange={setDoctorOpen} appointment={nextApptLocal} />
       <CreateAppointmentDialog open={createOpen} onOpenChange={setCreateOpen} />
       <RescheduleDialog open={!!rescheduleAppt} onOpenChange={(v) => !v && setRescheduleAppt(null)} appointment={rescheduleAppt} />
       <CancelAppointmentDialog open={!!cancelAppt} onOpenChange={(v) => !v && setCancelAppt(null)} appointment={cancelAppt} />
