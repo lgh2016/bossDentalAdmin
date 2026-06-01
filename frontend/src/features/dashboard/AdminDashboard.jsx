@@ -1,15 +1,16 @@
 import { useEffect, useState } from "react";
-import { CalendarDays, Users, UserPlus, Wallet, TrendingUp, Activity as ActivityIcon, Stethoscope, Receipt, ChevronRight } from "lucide-react";
+import { CalendarDays, Users, UserPlus, Wallet, TrendingUp, Stethoscope, Receipt, ChevronRight } from "lucide-react";
 import PageHeader from "@/shared/PageHeader";
 import KpiCard from "@/shared/KpiCard";
 import Section from "@/shared/Section";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/AuthContext";
-import { leads, patients, payments, doctors, activity } from "@/mocks";
+import { leads, patients, payments, doctors } from "@/mocks";
 import { currencyMXN, initials, formatDateLong } from "@/utils/format";
 import { Link } from "react-router-dom";
 import TodayAgendaSection from "./TodayAgendaSection";
+import AdminActivitySection from "./AdminActivitySection";
 import { dashboardApi } from "@/services/dashboardApi";
 
 export default function AdminDashboard() {
@@ -87,26 +88,7 @@ export default function AdminDashboard() {
         </Section>
       </div>
 
-      <Section title="Actividad reciente" action={<Link to="/actividad" className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1">Ver todo <ChevronRight size={12} /></Link>}>
-        <ul className="space-y-3">
-          {activity.slice(0, 6).map((a) => (
-            <li key={a.id} className="flex items-start gap-3">
-              <div className="size-8 rounded-md bg-secondary grid place-items-center mt-0.5">
-                <ActivityIcon size={14} className="text-muted-foreground" />
-              </div>
-              <div className="flex-1">
-                <p className="text-sm">
-                  <span className="font-medium">{a.actor}</span>{" "}
-                  <span className="text-muted-foreground">{a.action}</span>{" "}
-                  <span className="font-medium">{a.target}</span>
-                  {a.amount && <span className="text-primary font-medium"> · {currencyMXN(a.amount)}</span>}
-                </p>
-                <p className="text-xs text-muted-foreground mt-0.5">{a.time}</p>
-              </div>
-            </li>
-          ))}
-        </ul>
-      </Section>
+      <AdminActivitySection />
     </div>
   );
 }
