@@ -19,6 +19,7 @@ import RegisterPaymentDialog from "@/features/payments/RegisterPaymentDialog";
 import CancelPaymentDialog from "@/features/payments/CancelPaymentDialog";
 import QuotationEditor from "@/features/quotations/QuotationEditor";
 import PatientHistory from "./PatientHistory";
+import PatientAppointmentsTab from "./PatientAppointmentsTab";
 import { patientsApi } from "@/services/patientsApi";
 import { cn } from "@/lib/utils";
 
@@ -230,30 +231,13 @@ export default function PatientDetail() {
               </div>
             </TabsContent>
 
-            <TabsContent value="appointments" className="mt-4 space-y-3">
-              <div className="flex justify-end">
-                <Button size="sm" onClick={() => setCreateOpen(true)} data-testid="appts-create"><Plus size={13} className="mr-1" /> Crear cita</Button>
-              </div>
-              <div className="rounded-xl border border-border divide-y divide-border">
-                {apts.map((a) => (
-                  <div key={a.id} className="flex items-center gap-3 p-3 flex-wrap">
-                    <div className="w-32 text-xs">{a.date} · <span className="font-mono">{a.time}</span></div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{a.type} · <span className="text-muted-foreground">{a.branch}</span></p>
-                      <p className="text-xs text-muted-foreground truncate">{a.doctorName}</p>
-                    </div>
-                    {a.hasArrived && <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400"><UserCheck size={12} />llegó</span>}
-                    <StatusBadge value={a.status} />
-                    {a.status !== "Cancelada" && a.status !== "Atendida" && (
-                      <div className="flex gap-1">
-                        <Button size="sm" variant="ghost" onClick={() => setRescheduleAppt(a)} data-testid={`appt-reschedule-${a.id}`}><RefreshCw size={12} className="mr-1" />Reagendar</Button>
-                        <Button size="sm" variant="ghost" className="text-rose-500" onClick={() => setCancelAppt(a)} data-testid={`appt-cancel-${a.id}`}><X size={12} className="mr-1" />Cancelar</Button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-                {apts.length === 0 && <p className="text-sm text-muted-foreground p-6 text-center">Sin citas registradas.</p>}
-              </div>
+            <TabsContent value="appointments" className="mt-4">
+              <PatientAppointmentsTab
+                patientId={id}
+                onCreate={() => setCreateOpen(true)}
+                onReschedule={(a) => setRescheduleAppt(a)}
+                onCancel={(a) => setCancelAppt(a)}
+              />
             </TabsContent>
 
             <TabsContent value="treatments" className="mt-4 space-y-3">
