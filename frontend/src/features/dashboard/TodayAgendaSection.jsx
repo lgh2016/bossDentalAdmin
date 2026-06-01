@@ -26,26 +26,28 @@ export default function TodayAgendaSection() {
   const containerRef = useRef(null);
   const sentinelRef = useRef(null);
 
-  // Carga inicial
+  // Carga inicial (cancelable contra StrictMode dev double-invoke)
   useEffect(() => {
+    const ctrl = new AbortController();
     let cancelled = false;
     (async () => {
       setLoading(true);
       setError(null);
       try {
-        const data = await dashboardApi.todayPaged({ page: 0, size: PAGE_SIZE });
+        const data = await dashboardApi.todayPaged({ page: 0, size: PAGE_SIZE, signal: ctrl.signal });
         if (cancelled) return;
         setItems(Array.isArray(data?.content) ? data.content : []);
         setPage(data?.page ?? 0);
         setTotalPages(data?.totalPages ?? 0);
         setTotalElements(data?.totalElements ?? 0);
-      } catch {
+      } catch (err) {
+        if (err?.code === "ERR_CANCELED" || err?.name === "CanceledError") return;
         if (!cancelled) setError("No fue posible cargar la agenda de hoy.");
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; ctrl.abort(); };
   }, []);
 
   const hasMore = page + 1 < totalPages;

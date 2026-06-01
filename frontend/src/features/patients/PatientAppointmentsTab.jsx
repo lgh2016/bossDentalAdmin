@@ -22,19 +22,24 @@ export default function PatientAppointmentsTab({ patientId, onCreate, onReschedu
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (signal) => {
     setLoading(true); setError(null);
     try {
-      const data = await patientsApi.getAppointments(patientId);
+      const data = await patientsApi.getAppointments(patientId, { signal });
       setItems(Array.isArray(data) ? data : []);
-    } catch {
+    } catch (err) {
+      if (err?.code === "ERR_CANCELED" || err?.name === "CanceledError") return;
       setError("No fue posible cargar las citas del paciente.");
     } finally {
       setLoading(false);
     }
   }, [patientId]);
 
-  useEffect(() => { load(); }, [load, reloadKey]);
+  useEffect(() => {
+    const ctrl = new AbortController();
+    load(ctrl.signal);
+    return () => ctrl.abort();
+  }, [load, reloadKey]);
 
   return (
     <div className="space-y-3">

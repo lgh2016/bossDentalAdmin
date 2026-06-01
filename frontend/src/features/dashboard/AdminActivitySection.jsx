@@ -19,22 +19,24 @@ export default function AdminActivitySection() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    const ctrl = new AbortController();
     let cancelled = false;
     (async () => {
       setLoading(true); setError(null);
       try {
-        const data = await activityLogsApi.list({ page: 0, size: PAGE_SIZE });
+        const data = await activityLogsApi.list({ page: 0, size: PAGE_SIZE, signal: ctrl.signal });
         if (cancelled) return;
         setItems(Array.isArray(data?.content) ? data.content : []);
         setPage(data?.page ?? 0);
         setTotalPages(data?.totalPages ?? 0);
-      } catch {
+      } catch (err) {
+        if (err?.code === "ERR_CANCELED" || err?.name === "CanceledError") return;
         if (!cancelled) setError("No fue posible cargar la actividad reciente.");
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; ctrl.abort(); };
   }, []);
 
   const hasMore = page + 1 < totalPages;
