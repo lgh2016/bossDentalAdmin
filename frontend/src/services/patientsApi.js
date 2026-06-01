@@ -28,4 +28,18 @@ export const patientsApi = {
     const { data } = await httpClient.get(`${API_ENDPOINTS.patients.list}/${id}/detail`);
     return data?.data ?? null;
   },
+
+  /** GET /patients/{id}/appointments → { data: [...] } */
+  async getAppointments(id) {
+    const { data } = await httpClient.get(`${API_ENDPOINTS.patients.list}/${id}/appointments`);
+    return Array.isArray(data?.data) ? data.data : [];
+  },
+
+  /** GET /patients/{id}/activity-logs?page=&size= → { data: { content, page, size, totalElements, totalPages } } */
+  async getActivityLogs(id, { page = 0, size = 20 } = {}) {
+    const { data } = await httpClient.get(`${API_ENDPOINTS.patients.list}/${id}/activity-logs`, {
+      params: { page, size },
+    });
+    return data?.data ?? { content: [], page: 0, size, totalElements: 0, totalPages: 0 };
+  },
 };
