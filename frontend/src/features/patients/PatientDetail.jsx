@@ -44,20 +44,22 @@ export default function PatientDetail() {
   const [detailError, setDetailError] = useState(null);
 
   useEffect(() => {
+    const ctrl = new AbortController();
     let cancelled = false;
     setLoadingDetail(true);
     setDetailError(null);
     (async () => {
       try {
-        const d = await patientsApi.getDetail(id);
+        const d = await patientsApi.getDetail(id, { signal: ctrl.signal });
         if (!cancelled) setDetail(d);
-      } catch {
+      } catch (err) {
+        if (err?.code === "ERR_CANCELED" || err?.name === "CanceledError") return;
         if (!cancelled) setDetailError("No fue posible cargar el detalle del paciente.");
       } finally {
         if (!cancelled) setLoadingDetail(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; ctrl.abort(); };
   }, [id]);
 
   const [createOpen, setCreateOpen] = useState(false);

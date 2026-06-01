@@ -24,21 +24,21 @@ export const patientsApi = {
   },
 
   /** GET /patients/{id}/detail → { data, success, message } */
-  async getDetail(id) {
-    const { data } = await httpClient.get(`${API_ENDPOINTS.patients.list}/${id}/detail`);
+  async getDetail(id, { signal } = {}) {
+    const { data } = await httpClient.get(`${API_ENDPOINTS.patients.list}/${id}/detail`, { signal });
     return data?.data ?? null;
   },
 
   /** GET /patients/{id}/appointments → { data: [...] } */
-  async getAppointments(id) {
-    const { data } = await httpClient.get(`${API_ENDPOINTS.patients.list}/${id}/appointments`);
+  async getAppointments(id, { signal } = {}) {
+    const { data } = await httpClient.get(`${API_ENDPOINTS.patients.list}/${id}/appointments`, { signal });
     return Array.isArray(data?.data) ? data.data : [];
   },
 
-  /** GET /patients/{id}/activity-logs?page=&size= → { data: { content, page, size, totalElements, totalPages } } */
-  async getActivityLogs(id, { page = 0, size = 20 } = {}) {
+  /** GET /patients/{id}/activity-logs?page=&size= */
+  async getActivityLogs(id, { page = 0, size = 20, signal } = {}) {
     const { data } = await httpClient.get(`${API_ENDPOINTS.patients.list}/${id}/activity-logs`, {
-      params: { page, size },
+      params: { page, size }, signal,
     });
     return data?.data ?? { content: [], page: 0, size, totalElements: 0, totalPages: 0 };
   },

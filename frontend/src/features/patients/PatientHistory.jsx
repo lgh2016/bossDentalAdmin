@@ -19,25 +19,27 @@ export default function PatientHistory({ patientId }) {
 
   const requestId = useRef(0);
 
-  // Carga inicial
+  // Carga inicial (cancelable contra StrictMode dev double-invoke)
   useEffect(() => {
+    const ctrl = new AbortController();
     const myId = ++requestId.current;
     setItems([]); setPage(0); setTotalPages(0); setTotalElements(0); setError(null); setLoading(true);
     (async () => {
       try {
-        const data = await patientsApi.getActivityLogs(patientId, { page: 0, size: PAGE_SIZE });
+        const data = await patientsApi.getActivityLogs(patientId, { page: 0, size: PAGE_SIZE, signal: ctrl.signal });
         if (myId !== requestId.current) return;
         setItems(Array.isArray(data?.content) ? data.content : []);
         setPage(data?.page ?? 0);
         setTotalPages(data?.totalPages ?? 0);
         setTotalElements(data?.totalElements ?? 0);
-      } catch {
-        if (myId !== requestId.current) return;
-        setError("No fue posible cargar el historial.");
+      } catch (err) {
+        if (err?.code === "ERR_CANCELED" || err?.name === "CanceledError") return;
+        if (myId === requestId.current) setError("No fue posible cargar el historial.");
       } finally {
         if (myId === requestId.current) setLoading(false);
       }
     })();
+    return () => ctrl.abort();
   }, [patientId]);
 
   const hasMore = page + 1 < totalPages;
