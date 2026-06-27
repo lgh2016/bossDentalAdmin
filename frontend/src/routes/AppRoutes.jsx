@@ -7,6 +7,7 @@ import PatientsList from "@/features/patients/PatientsList";
 import PatientDetail from "@/features/patients/PatientDetail";
 import MyAssignedPatients from "@/features/patients/MyAssignedPatients";
 import AppointmentsList from "@/features/appointments/AppointmentsList";
+import MyDentistAppointments from "@/features/appointments/MyDentistAppointments";
 import AgendaCalendar from "@/features/appointments/AgendaCalendar";
 import Agenda from "@/features/appointments/Agenda";
 import RegisterPayment from "@/features/payments/RegisterPayment";
@@ -14,6 +15,7 @@ import LeadsList from "@/features/leads/LeadsList";
 import PaymentsList from "@/features/payments/PaymentsList";
 import TreatmentsList from "@/features/treatments/TreatmentsList";
 import DoctorsList from "@/features/doctors/DoctorsList";
+import AdminDoctorsPage from "@/features/admin/AdminDoctorsPage";
 import ActivityList from "@/features/activity/ActivityList";
 import FollowUpsList from "@/features/follow-ups/FollowUpsList";
 import RecordsList from "@/features/records/RecordsList";
@@ -104,6 +106,14 @@ export default function AppRoutes() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/admin/doctores"
+          element={
+            <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
+              <AdminDoctorsPage />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Recepcionista */}
         <Route
@@ -128,7 +138,7 @@ export default function AppRoutes() {
           path="/mis-citas"
           element={
             <ProtectedRoute allowedRoles={[ROLES.DENTISTA]}>
-              <AppointmentsList doctorId="d-1" title="Mis citas" subtitle="Citas asignadas a tu agenda clínica." />
+              <MyDentistAppointments />
             </ProtectedRoute>
           }
         />
@@ -136,7 +146,7 @@ export default function AppRoutes() {
           path="/mis-pacientes"
           element={
             <ProtectedRoute allowedRoles={[ROLES.DENTISTA]}>
-              <MyAssignedPatients doctorId="d-1" />
+              <MyAssignedPatients />
             </ProtectedRoute>
           }
         />

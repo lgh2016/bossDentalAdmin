@@ -1,0 +1,39 @@
+{
+  "summary": "P1 backend regression for Boss Dental — branch-level capacity + lock-workflow + new lifecycle endpoints. 59/59 pytest passing (36 P0 + 23 new P1) against external URL https://dental-admin-10.preview.emergentagent.com/api. Adjusted 2 P0 tests to fit the new P1 contract (branch capacity, not per-doctor) and added a sibling backend_test_p1.py covering: branch capacity 4 with same-doctor/same-slot allowed, interval-based capacity at 10:15 with [10:00,10:45) full, lock payload (doctorSolicitado + horaProgramada + endSlots), confirm inherits doctorAsignado from solicitado, arrive (HH:MM:SS horaLlegada + 409 from non-CONFIRMED), assign-doctor keeps solicitado original and 409 on completed, start-attention from ARRIVED and from CONFIRMED (inherits doctor), 409 from LOCKED and 400 path covered indirectly, finish-attention concatenates notes + 409 from non-IN_PROGRESS, cancel + 409 from COMPLETED, reschedule resets real times + capacity 409 + 409 from CANCELLED, GET /{id} exposes all P1 fields (doctorSolicitado/Asignado/Name, horaProgramada/Llegada/InicioReal/FinReal, dentist/doctor aliases effective = asignado||solicitado), schedule/day matches dentistId via $or on doctorAsignado/doctorSolicitado/doctorId, all activity-log codes registered (APPOINTMENT_CREATED, _ARRIVED, _DOCTOR_ASSIGNED, _STARTED, _COMPLETED, _CANCELLED, _RESCHEDULED), seed run twice keeps branches count and preserves capacity=4 (no sobrescribe).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/appointments/{id}/start-attention", "issue": "Cuando se inicia atención desde CONFIRMED sin llegada, no se asigna horaLlegada — lo cual es intencional según código, pero el frontend podría confundirse. Documentar contrato."},
+      {"endpoint": "PUT /api/appointments/{id}/finish-attention", "issue": "Concatena notas con '\\n' incluso si la nota previa es vacía — resultado puede empezar con '\\n'. Aceptable pero podría limpiarse."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/backend_test_p1.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "appointments.py (819 líneas): muy cerca del límite recomendado de 700 — considerar separar lock_workflow (lock/start/end/dentist/date/confirm) de lifecycle (arrive/assign/start/finish/cancel/reschedule) en módulos hermanos.",
+    "_branch_capacity hace fallback al nº de doctores activos si la branch no tiene capacity — bien para retrocompat, pero podría loguear un warning si capacity es None para detectar branches sin seed.",
+    "finish_attention concatena notas con '\\n'.join([prev, new]) — si prev está vacía queda '\\nNEW'. Limpio con filter(None, [...]).",
+    "start_attention permite empezar desde CONFIRMED sin marcar llegada, en cuyo caso horaLlegada queda None — el contrato lo permite explícitamente; documentar para frontend.",
+    "schedule/day y schedule/month: el $or sobre dentistId combina con un filtro statusCode $nin → ambos operadores se mezclan correctamente, pero si se añadiera otro $or futuro se machacaría. Considerar usar $and explícito.",
+    "reschedule respeta capacidad por sucursal excluyendo la propia cita (exclude_appt_id) — ✅ correcto.",
+    "assign_doctor no valida que doctor pertenezca a la misma branch — sólo busca por id global. Podría restringir.",
+    "appointments.py: muchas updates separadas; cuando se hace update_one+find_one en un mismo endpoint, considerar usar find_one_and_update con return_document=AFTER para atomicidad y menos roundtrips.",
+    "Activity logs no se filtran por branchId — recepción ve todo. Confirmar si es producto deseado."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py (ajustado test_lock_conflict_409 y test_locked_excluded_from_schedule al nuevo contrato P1)",
+    "/app/backend/tests/backend_test_p1.py (NUEVO — 23 pruebas para P1)"
+  ],
+  "success_rate": {"backend": "100% (59/59)", "frontend": "not_tested (backend only request)"},
+  "test_credentials": "admin@bossdental.com / admin123 (ADMIN), reception@bossdental.com / admin1234 (RECEPTION)",
+  "seed_data_creation": "Cada corrida crea ~10 pacientes TEST_P1_<uuid> y ~30 citas (mezcla LOCKED/CONFIRMED/COMPLETED/CANCELLED) en fechas futuras +14 a +210 días. No se limpia automáticamente. Para reset: drop colecciones appointments + patients TEST_*.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Tests viven en /app/backend/tests/backend_test.py (P0, 36 tests) y /app/backend/tests/backend_test_p1.py (P1, 23 tests). Correr: `cd /app/backend && python -m pytest tests/ -v --junitxml=/app/test_reports/pytest/pytest_results.xml`. Usan URL externa REACT_APP_BACKEND_URL. El test P0 `test_lock_conflict_409` fue relajado para tolerar capacidad ya saturada de runs previos: itera hasta 5 locks y exige que ALGUNO retorne 409 con 'capacidad'. El test P1 `test_capacity_per_branch_allows_4_same_slot` sí asume cap=4 estricto en fechas alejadas (+28d, +35d) — si el DB acumula mucha data en esas fechas con corridas repetidas puede empezar a fallar; en ese caso, mover _future_date a 200+ días. Los nombres 'María' / 'González' / 'Carlos' / 'Hernández' provienen del seed y se usan literalmente en aserciones.",
+  "rca_of_the_issue": "Los 2 fallos P0 iniciales (test_lock_conflict_409 y test_locked_excluded_from_schedule) NO eran bugs del backend — eran asunciones obsoletas del test bajo el modelo per-doctor. Con el cambio a capacidad por sucursal (cap=4) el segundo lock idéntico ahora se acepta (correcto) y el bucket de schedule/month puede tener entradas CONFIRMED de runs previos en la misma fecha (también correcto). Tests ajustados acorde al nuevo contrato P1."
+}

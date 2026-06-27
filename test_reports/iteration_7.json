@@ -1,0 +1,46 @@
+{
+  "summary": "Boss Dental — Walk-in & History iteration. BACKEND: 84/85 pytest passing (36 P0 + 23 P1 + 18 DENTIST + 14 NEW walkin/history). El único fallo es el test pre-existente flaky `test_get_appointment_detail` (durationMinutes==0, ya documentado en iteration_6, NO regresión). Los 14 tests nuevos de backend_test_walkin.py PASAN al 100% — cubren walk-in sin doctor / con doctor / 404, WALK_IN_REGISTERED log, history estructura + orden inverso, walk-in visible en schedule/day y dentist/waiting-room, flujo E2E completo walk-in → assign → start → finish → completed-today, y campos extendidos (walkIn, patientExpedient EXP-..., patientPhone, rescheduledAt, cancelReason, cancelledAt) en GET /appointments/{id}. FRONTEND: smoke E2E reception → /agenda renderiza correctamente: 38 cards distribuidas en columnas por doctor + 'Sin asignar', lane allocation OK (0 pares de overlap detectados con bounding rects), cards muestran EXP-2026-XXXXXX, hora, motivo, doctor, badges en español (Confirmada / En atención / Asignada / Atendida / Sin cita), botones agenda-walkin-top y agenda-create-top visibles, nav agenda-prev/next/today presentes. ⚠️ BUG FRONTEND DETECTADO: el filtro de doctores (data-testid='agenda-doctor-filter') queda VACÍO porque el useEffect en Agenda.jsx aborta via AbortController y el `.catch` ejecuta `toast.error('No fue posible cargar los doctores')` + `setDoctors([])` cuando el error es AbortError (en StrictMode / dev). Esto bloquea el escenario (c)/(d) de la review_request (no se puede cambiar el filtro a Carlos por UI). Pasos posteriores del E2E (drawer click, walk-in dialog completo) no se completaron por timeout de tokens en este run, pero los selectores/data-testid renderizan.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/appointments/{id}", "issue": "test_get_appointment_detail flaky pre-existente (durationMinutes==0 al re-correr la suite completa con DB saturada). No es regresión; iteration_6 ya lo documentó. Pasa al correr el archivo aislado."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Agenda.jsx (filtro doctores)", "issue": "El useEffect que carga doctores hace `.catch(() => { setDoctors([]); toast.error('No fue posible cargar los doctores'); })` SIN discriminar AbortError. En modo dev/StrictMode (efecto doble) el primer ctrl.abort() del cleanup dispara el catch → toast rojo visible Y deja doctors=[] de forma intermitente. Resultado: el Select 'agenda-doctor-filter' sólo muestra 'Todos los doctores' (sin opciones de doctor) y el escenario (c) — filtrar por Carlos — no es ejecutable por UI.", "selector": "[data-testid='agenda-doctor-filter']", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/backend_test_p1.py",
+    "/app/backend/tests/backend_test_dentist.py",
+    "/app/backend/tests/backend_test_walkin.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "PRIORIDAD ALTA — En /app/frontend/src/features/appointments/Agenda.jsx (línea ~34) excluir AbortError del catch para evitar el toast falso y el reset de doctors. Patrón: `.catch((err) => { if (err?.name === 'CanceledError' || err?.name === 'AbortError' || err?.code === 'ERR_CANCELED') return; setDoctors([]); toast.error(...); })`. Sin este fix el filtro de doctores queda inutilizable en dev y el escenario (c)/(d)/(k) no se puede completar manualmente.",
+    "(Opcional) Investigar el flaky GET /appointments/{id} durationMinutes==0 — sugerencia de iteration_6 sigue vigente."
+  ],
+  "critical_code_review_comments": [
+    "routers/appointments.py: walk-in correctamente registra ARRIVED con statusName='Sin cita' (PURPLE), walkIn=True, log WALK_IN_REGISTERED. Bien.",
+    "_serialize_appt_full expone TODOS los campos requeridos (walkIn, patientExpedient, patientPhone, rescheduledAt, cancelReason, cancelledAt) y se usa también en schedule/day → consistencia OK.",
+    "/{id}/history hace .sort('createdAt', -1) — orden inverso garantizado a nivel DB. Eventos tienen actionCode, title, description, createdAt → estructura correcta.",
+    "Walk-in con doctorId asigna en el mismo POST (doctorAsignado + doctorAsignadoName). Si doctorId=None permanece None — el flujo de assign-doctor posterior funciona (validado E2E).",
+    "schedule/day excluye LOCKED y CANCELLED pero NO ARRIVED → walk-in es visible. Correcto.",
+    "FRONT Agenda.jsx falta guard de AbortError en catch — bug HIGH descrito arriba.",
+    "FRONT AgendaDaily.jsx: la lane allocation funciona correctamente — verificado con DOM bounding rects (0 overlap pairs entre cards en misma columna)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test_walkin.py (NUEVO — 14 tests: walk-in register/no-doctor/with-doctor/404, history estructura+orden, walk-in en schedule/day y dentist/waiting-room, flujo E2E walk-in→completed-today, campos extendidos en detail)"
+  ],
+  "success_rate": {"backend": "98.8% (84/85; 1 flaky pre-existente)", "frontend": "Parcial — agenda renderiza OK (cards/cols/lane/badges/EXP-XXX/top buttons) pero filtro doctores roto bloquea escenarios c/d/k"},
+  "test_credentials": "admin@bossdental.com/admin123, reception@bossdental.com/admin1234, dentist@bossdental.com/dentist123 (doctorId=1)",
+  "seed_data_creation": "backend_test_walkin.py crea ~6 pacientes TEST_WALKIN_P_<hex> + varias appointments walk-in y un ciclo lock→…→completed para history. No autolimpia (alineado con el patrón de las otras suites). Reset: drop appointments/patients con prefijo TEST_WALKIN_.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Cuatro archivos de tests en /app/backend/tests/: backend_test.py (P0, 36), backend_test_p1.py (P1, 23), backend_test_dentist.py (DENTIST, 18), backend_test_walkin.py (NUEVO walkin/history, 14). Comando: `cd /app/backend && python -m pytest tests/backend_test.py tests/backend_test_p1.py tests/backend_test_dentist.py tests/backend_test_walkin.py --tb=short --junitxml=/app/test_reports/pytest/pytest_results.xml`. Resultado actual: 84/85. test_get_appointment_detail sigue flaky. Frontend tiene 1 bug HIGH en Agenda.jsx (catch sin guard de AbortError) — antes de re-validar (c)/(d)/(h)/(j)/(k) de la review_request hay que aplicar el fix. La walk-in dialog, drawer con historial/timeline y cancel/reasignar NO se ejecutaron por UI en este run (faltó tiempo); el flujo backend equivalente sí está cubierto en backend_test_walkin.py. Lane allocation verificada visualmente: 4 cards a las 9:00 lado a lado, sin overlap (0 pares detectados por bounding rects en misma X).",
+  "rca_of_the_issue": "Bug HIGH frontend: el catch en useEffect de Agenda.jsx no distingue AbortError. En desarrollo (StrictMode) React monta → corre efecto → desmonta → re-monta. El cleanup ctrl.abort() del primer mount rechaza la primera promesa con AbortError, lo que dispara el catch genérico, mostrando toast 'No fue posible cargar los doctores' y haciendo setDoctors([]). Si esto ocurre DESPUÉS del setDoctors(data) del segundo efecto, el filtro queda vacío. Fix: `if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED') return;` al inicio del catch. Mismo patrón debe revisarse en otros lugares con AbortController (AgendaDaily.jsx, appointmentsApi.scheduleDay/getById)."
+}

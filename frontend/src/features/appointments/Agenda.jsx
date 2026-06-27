@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Calendar, CalendarRange } from "lucide-react";
+import { Plus, Calendar, CalendarRange, UserPlus2 } from "lucide-react";
 import PageHeader from "@/shared/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import AgendaDaily from "./AgendaDaily";
 import AgendaMonthly from "./AgendaMonthly";
 import CreateAppointmentDialog from "./CreateAppointmentDialog";
+import WalkInDialog from "./WalkInDialog";
 import { doctorsApi } from "@/services/doctorsApi";
 
 const BRANCH_ID = 1;
@@ -16,30 +17,25 @@ const ALL_DOCTORS_VALUE = "ALL";
 export default function Agenda() {
   const [tab, setTab] = useState("daily");
   const [createOpen, setCreateOpen] = useState(false);
+  const [walkInOpen, setWalkInOpen] = useState(false);
   const [createDefaultDate, setCreateDefaultDate] = useState();
   const [dailyDate, setDailyDate] = useState(new Date());
+  const [agendaRefreshKey, setAgendaRefreshKey] = useState(0);
 
   // Filtro de doctores compartido entre vista Diaria y Mensual
   const [doctors, setDoctors] = useState([]);
   const [selectedDentistKey, setSelectedDentistKey] = useState(ALL_DOCTORS_VALUE);
-  // dentistId real (null = "todos"); se calcula desde la opción seleccionada
   const dentistId = selectedDentistKey === ALL_DOCTORS_VALUE ? null : Number(selectedDentistKey);
 
-  // Lazy load: cargar doctores sólo cuando entremos a Agenda
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await doctorsApi.listActive({ branchId: BRANCH_ID });
-        if (!cancelled) setDoctors(Array.isArray(data) ? data : []);
-      } catch {
-        if (!cancelled) {
-          setDoctors([]);
-          toast.error("No fue posible cargar los doctores");
-        }
-      }
-    })();
-    return () => { cancelled = true; };
+    const ctrl = new AbortController();
+    doctorsApi.listActive({ branchId: BRANCH_ID, signal: ctrl.signal })
+      .then((data) => setDoctors(Array.isArray(data) ? data : []))
+      .catch((err) => {
+        if (err?.code === "ERR_CANCELED" || err?.name === "CanceledError" || err?.name === "AbortError") return;
+        setDoctors([]); toast.error("No fue posible cargar los doctores");
+      });
+    return () => ctrl.abort();
   }, []);
 
   const openCreate = (date) => {
@@ -73,11 +69,16 @@ export default function Agenda() {
       <PageHeader
         eyebrow="Recepción"
         title="Agenda"
-        subtitle="Gestiona la agenda diaria y revisa la carga mensual de la clínica."
+        subtitle="Gestiona la agenda diaria, walk-ins y revisa la carga mensual."
         actions={
-          <Button onClick={() => openCreate()} data-testid="agenda-create-top">
-            <Plus size={14} className="mr-1" /> Crear cita
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="outline" onClick={() => setWalkInOpen(true)} data-testid="agenda-walkin-top">
+              <UserPlus2 size={14} className="mr-1" /> Sin cita
+            </Button>
+            <Button type="button" onClick={() => openCreate()} data-testid="agenda-create-top">
+              <Plus size={14} className="mr-1" /> Crear cita
+            </Button>
+          </div>
         }
       />
 
@@ -89,6 +90,7 @@ export default function Agenda() {
         <TabsContent value="daily" className="mt-4">
           {tab === "daily" && (
             <AgendaDaily
+              key={`daily-${agendaRefreshKey}`}
               branchId={BRANCH_ID}
               dentistId={dentistId}
               controlledDate={dailyDate}
@@ -109,7 +111,31 @@ export default function Agenda() {
         </TabsContent>
       </Tabs>
 
-      <CreateAppointmentDialog open={createOpen} onOpenChange={setCreateOpen} defaultDate={createDefaultDate} />
+      <CreateAppointmentDialog
+        open={createOpen}
+        onOpenChange={(o) => { setCreateOpen(o); if (!o) setAgendaRefreshKey((k) => k + 1); }}
+        defaultDate={createDefaultDate}
+        onCreated={(created) => {
+          // Salta a la fecha de la cita creada para mostrarla en vivo
+          if (created?.appointmentDate) {
+            const [y, m, d] = created.appointmentDate.split("-").map(Number);
+            setDailyDate(new Date(y, (m || 1) - 1, d || 1));
+          }
+          setTab("daily");
+          setAgendaRefreshKey((k) => k + 1);
+        }}
+      />
+      <WalkInDialog
+        open={walkInOpen}
+        onOpenChange={setWalkInOpen}
+        onCreatePatient={() => { setCreateDefaultDate(undefined); setCreateOpen(true); }}
+        onCreated={() => {
+          // Forzar refresco de agenda diaria para mostrar el walk-in
+          setDailyDate(new Date());
+          setTab("daily");
+          setAgendaRefreshKey((k) => k + 1);
+        }}
+      />
     </div>
   );
 }

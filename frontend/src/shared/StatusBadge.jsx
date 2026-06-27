@@ -1,41 +1,62 @@
 import { cn } from "@/lib/utils";
+import { statusLabel, statusClasses } from "@/utils/appointmentStatus";
 
-const MAP = {
-  Confirmada: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 ring-emerald-500/20",
-  "En curso": "bg-sky-500/10 text-sky-600 dark:text-sky-400 ring-sky-500/20",
-  "En consulta": "bg-sky-500/10 text-sky-600 dark:text-sky-400 ring-sky-500/20",
-  "Llegó": "bg-violet-500/10 text-violet-600 dark:text-violet-400 ring-violet-500/20",
-  Atendida: "bg-slate-500/10 text-slate-600 dark:text-slate-300 ring-slate-500/20",
-  Reprogramada: "bg-amber-500/10 text-amber-700 dark:text-amber-400 ring-amber-500/20",
-  Pendiente: "bg-amber-500/10 text-amber-700 dark:text-amber-400 ring-amber-500/20",
-  Completada: "bg-slate-500/10 text-slate-600 dark:text-slate-300 ring-slate-500/20",
-  Completado: "bg-slate-500/10 text-slate-600 dark:text-slate-300 ring-slate-500/20",
-  Cancelada: "bg-rose-500/10 text-rose-600 dark:text-rose-400 ring-rose-500/20",
-  Cancelado: "bg-rose-500/10 text-rose-600 dark:text-rose-400 ring-rose-500/20",
-  Pagado: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 ring-emerald-500/20",
-  Activo: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 ring-emerald-500/20",
+const LEGACY_MAP = {
+  Confirmada: "bg-emerald-500/12 text-emerald-700 ring-emerald-500/25 dark:text-emerald-300",
+  "En curso": "bg-sky-500/12 text-sky-700 ring-sky-500/25 dark:text-sky-300",
+  "En consulta": "bg-sky-500/12 text-sky-700 ring-sky-500/25 dark:text-sky-300",
+  "Llegó": "bg-amber-500/15 text-amber-800 ring-amber-500/30 dark:text-amber-300",
+  Atendida: "bg-zinc-500/15 text-zinc-700 ring-zinc-500/25 dark:text-zinc-300",
+  Reprogramada: "bg-orange-500/12 text-orange-700 ring-orange-500/25 dark:text-orange-300",
+  Reagendada: "bg-orange-500/12 text-orange-700 ring-orange-500/25 dark:text-orange-300",
+  Pendiente: "bg-amber-500/12 text-amber-800 ring-amber-500/25 dark:text-amber-300",
+  Completada: "bg-zinc-500/15 text-zinc-700 ring-zinc-500/25 dark:text-zinc-300",
+  Completado: "bg-zinc-500/15 text-zinc-700 ring-zinc-500/25 dark:text-zinc-300",
+  Cancelada: "bg-rose-500/12 text-rose-700 ring-rose-500/25 dark:text-rose-300",
+  Cancelado: "bg-rose-500/12 text-rose-700 ring-rose-500/25 dark:text-rose-300",
+  Pagado: "bg-emerald-500/12 text-emerald-700 ring-emerald-500/25 dark:text-emerald-300",
+  Activo: "bg-emerald-500/12 text-emerald-700 ring-emerald-500/25 dark:text-emerald-300",
   Inactivo: "bg-slate-500/10 text-slate-500 ring-slate-500/20",
   Nuevo: "bg-primary/10 text-primary ring-primary/20",
-  Contactado: "bg-sky-500/10 text-sky-600 dark:text-sky-400 ring-sky-500/20",
-  "Cita agendada": "bg-violet-500/10 text-violet-600 dark:text-violet-400 ring-violet-500/20",
-  Convertido: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 ring-emerald-500/20",
-  "En curso ": "bg-sky-500/10 text-sky-600",
-  Alta: "bg-rose-500/10 text-rose-600 dark:text-rose-400 ring-rose-500/20",
-  Media: "bg-amber-500/10 text-amber-700 dark:text-amber-400 ring-amber-500/20",
+  Contactado: "bg-sky-500/12 text-sky-700 ring-sky-500/25 dark:text-sky-300",
+  "Cita agendada": "bg-violet-500/12 text-violet-700 ring-violet-500/25 dark:text-violet-300",
+  Convertido: "bg-emerald-500/12 text-emerald-700 ring-emerald-500/25 dark:text-emerald-300",
+  "En atención": "bg-sky-500/12 text-sky-700 ring-sky-500/25 dark:text-sky-300",
+  Asignada: "bg-blue-500/12 text-blue-700 ring-blue-500/25 dark:text-blue-300",
+  "Sin cita": "bg-violet-500/12 text-violet-700 ring-violet-500/25 dark:text-violet-300",
+  "No asistió": "bg-rose-500/12 text-rose-700 ring-rose-500/25 dark:text-rose-300",
+  Bloqueada: "bg-amber-500/12 text-amber-800 ring-amber-500/25 dark:text-amber-300",
+  Alta: "bg-rose-500/12 text-rose-700 ring-rose-500/25 dark:text-rose-300",
+  Media: "bg-amber-500/12 text-amber-800 ring-amber-500/25 dark:text-amber-300",
   Baja: "bg-slate-500/10 text-slate-500 ring-slate-500/20",
 };
 
-export default function StatusBadge({ value }) {
-  const cls = MAP[value] || "bg-secondary text-foreground/70 ring-border";
+/**
+ * StatusBadge — discreto y elegante.
+ * Acepta dos formas de uso:
+ *   <StatusBadge value="Confirmada" />            → legacy string
+ *   <StatusBadge appointment={appt} />            → calcula etiqueta desde walkIn/statusCode/doctorAsignado
+ *
+ * `size`: "sm" (default) | "xs"
+ */
+export default function StatusBadge({ value, appointment, size = "sm", className }) {
+  const label = appointment ? statusLabel(appointment) : value;
+  const cls = appointment ? statusClasses(appointment) : (LEGACY_MAP[value] || "bg-secondary text-foreground/70 ring-border");
+  const sizing = size === "xs"
+    ? "px-1.5 py-0.5 text-[10px]"
+    : "px-2 py-0.5 text-[11px]";
   return (
     <span
+      title={label}
       className={cn(
-        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset",
+        "inline-flex items-center gap-1 rounded-full font-medium ring-1 ring-inset whitespace-nowrap",
+        sizing,
         cls,
+        className,
       )}
     >
-      <span className="size-1 rounded-full bg-current opacity-70" />
-      {value}
+      <span className="size-1.5 rounded-full bg-current opacity-70" />
+      {label}
     </span>
   );
 }

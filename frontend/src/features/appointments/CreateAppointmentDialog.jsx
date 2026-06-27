@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,9 +15,13 @@ import { doctorsApi } from "@/services/doctorsApi";
 import { appointmentsApi } from "@/services/appointmentsApi";
 import { useClinic, clinicStore } from "@/store/clinicStore";
 import { useAuth } from "@/context/AuthContext";
+import {
+  todayISO, startSlots, endSlots, defaultEndTime, validateAppointmentDateTime, isSunday,
+} from "@/utils/scheduleTime";
 
 const BRANCH_ID = 1;
 const SR = "S/R";
+const NO_DOCTOR = "NONE";
 
 const GENDER_OPTIONS = [
   { value: "Femenino", label: "Femenino" },
@@ -37,7 +41,6 @@ const emptyNewPatient = () => ({
   emergencyContactPhone: "",
 });
 
-// Letras (a-z, A-Z), acentos, ñ/Ñ, ü/Ü, espacios, guiones y apóstrofes.
 const NAME_REGEX = /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s'-]*$/;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const PHONE_REGEX = /^\d{10}$/;
@@ -46,18 +49,13 @@ function validateNewPatient(p) {
   const errors = {};
   if (!p.name?.trim()) errors.name = "Nombre requerido";
   else if (!NAME_REGEX.test(p.name.trim())) errors.name = "Solo letras, acentos y Ñ";
-
   if (!p.lastName?.trim()) errors.lastName = "Apellido requerido";
   else if (!NAME_REGEX.test(p.lastName.trim())) errors.lastName = "Solo letras, acentos y Ñ";
-
   if (!p.email?.trim()) errors.email = "Email requerido";
   else if (!EMAIL_REGEX.test(p.email.trim())) errors.email = "Email inválido";
-
   if (!p.phone) errors.phone = "Teléfono requerido";
   else if (!PHONE_REGEX.test(String(p.phone))) errors.phone = "10 dígitos numéricos";
-
   if (!p.gender) errors.gender = "Género requerido";
-
   if (!p.birthDate) errors.birthDate = "Fecha requerida";
   else {
     const d = new Date(p.birthDate);
@@ -66,60 +64,54 @@ function validateNewPatient(p) {
     else if (d > now) errors.birthDate = "No puede ser futura";
     else if (d < new Date("1900-01-01")) errors.birthDate = "Fecha fuera de rango";
   }
-
   if (!p.address?.trim()) errors.address = "Dirección requerida";
-
-  // Contacto de emergencia OPCIONAL: solo validar formato si el usuario llenó algo.
   if (p.emergencyContactName?.trim() && !NAME_REGEX.test(p.emergencyContactName.trim())) {
     errors.emergencyContactName = "Solo letras, acentos y Ñ";
   }
   if (p.emergencyContactPhone && !PHONE_REGEX.test(String(p.emergencyContactPhone))) {
     errors.emergencyContactPhone = "10 dígitos numéricos";
   }
-
   return errors;
 }
 
 const errCls = (hasErr) => (hasErr ? "border-rose-500 focus-visible:ring-rose-500/30" : "");
-
-// "HH:mm:ss" → "HH:mm" (los selects/forms usan formato corto)
-const trimSec = (t) => (t ? String(t).slice(0, 5) : "");
-const todayISO = () => new Date().toISOString().slice(0, 10);
 const valueOrSR = (v) => (v == null || v === "" ? SR : v);
 
-export default function CreateAppointmentDialog({ open, onOpenChange, defaultDate }) {
+// Validaciones del formulario de cita: paciente + motivo + fecha/hora (delegado).
+function validateAppointment({ patient, date, startTime, endTime, reason }) {
+  const errors = validateAppointmentDateTime({ date, startTime, endTime });
+  if (!patient) errors.patient = "Selecciona un paciente";
+  if (!reason?.trim()) errors.reason = "Motivo requerido";
+  return errors;
+}
+
+export default function CreateAppointmentDialog({ open, onOpenChange, defaultDate, lockedPatient = null, onCreated }) {
   const { user } = useAuth();
   const { reasons } = useClinic();
 
+  // Si viene lockedPatient (p.ej. desde el detalle del paciente), saltamos la búsqueda
+  // y forzamos la pestaña "existente". Tampoco se permite cambiar a "nuevo paciente".
   const [tab, setTab] = useState("existing");
 
-  // -------- Estado del paciente existente (buscador real) --------
+  // --- Paciente existente ---
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState(null);
 
-  // -------- Estado del flujo de creación de cita --------
+  // --- Datos de la cita ---
   const [doctors, setDoctors] = useState([]);
   const [loadingDoctors, setLoadingDoctors] = useState(false);
-  // Cleanup de locks expirados al abrir el modal (FASE 2)
-  const [agendaReady, setAgendaReady] = useState(false);
-  const cleanupRanForOpen = useRef(false);
-  const [doctorId, setDoctorId] = useState("");
+  const [doctorKey, setDoctorKey] = useState(NO_DOCTOR);    // NO_DOCTOR | "<id>"
   const [date, setDate] = useState(defaultDate || todayISO());
-  const [startSlots, setStartSlots] = useState([]);
-  const [loadingStartSlots, setLoadingStartSlots] = useState(false);
   const [startTime, setStartTime] = useState("");
-  const [endSlots, setEndSlots] = useState([]);
   const [endTime, setEndTime] = useState("");
-  const [appointmentId, setAppointmentId] = useState(null);
-  const [locking, setLocking] = useState(false);
-  const [updatingEnd, setUpdatingEnd] = useState(false);
   const [reasonName, setReasonName] = useState("");
   const [notes, setNotes] = useState("");
-  const [confirming, setConfirming] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [appointmentTouched, setAppointmentTouched] = useState({});
 
-  // -------- Estado de "Paciente nuevo" --------
+  // --- Paciente nuevo ---
   const [newPatient, setNewPatient] = useState(emptyNewPatient());
   const [questionnaire, setQuestionnaire] = useState(emptyQuestionnaire());
   const [touched, setTouched] = useState({});
@@ -128,23 +120,25 @@ export default function CreateAppointmentDialog({ open, onOpenChange, defaultDat
   const patientErrors = useMemo(() => validateNewPatient(newPatient), [newPatient]);
   const isPatientFormValid = Object.keys(patientErrors).length === 0;
 
-  // Placeholder dinámico (año actual)
+  const apptErrors = useMemo(
+    () => validateAppointment({ patient: selectedPatient, date, startTime, endTime, reason: reasonName }),
+    [selectedPatient, date, startTime, endTime, reasonName],
+  );
+  const isApptValid = Object.keys(apptErrors).length === 0;
+
   const expedientHint = `EXP-${new Date().getFullYear()}-000001`;
   const searchPlaceholder = `Buscar por nombre, teléfono o expediente (${expedientHint})…`;
-
   const reasonOptions = reasons.map((r) => ({ value: r.id, label: r.name }));
 
-  // ====== Reset helpers ======
-  const resetAppointmentFlow = () => {
-    setDoctorId("");
+  // ====== Resets ======
+  const resetAppointmentForm = () => {
+    setDoctorKey(NO_DOCTOR);
     setDate(defaultDate || todayISO());
-    setStartSlots([]);
     setStartTime("");
-    setEndSlots([]);
     setEndTime("");
-    setAppointmentId(null);
     setReasonName("");
     setNotes("");
+    setAppointmentTouched({});
   };
   const resetPatientForm = () => {
     setNewPatient(emptyNewPatient());
@@ -156,53 +150,39 @@ export default function CreateAppointmentDialog({ open, onOpenChange, defaultDat
     setQuery("");
     setSearchResults([]);
     setSelectedPatient(null);
-    resetAppointmentFlow();
+    resetAppointmentForm();
     resetPatientForm();
   };
 
-  // ====== Cleanup de locks expirados — una sola vez por apertura del modal (FASE 2) ======
+  // ====== Sincronizar defaultDate al abrir ======
   useEffect(() => {
-    if (!open) {
-      cleanupRanForOpen.current = false;
-      setAgendaReady(false);
-      return;
+    if (open && defaultDate) setDate(defaultDate);
+  }, [open, defaultDate]);
+
+  // ====== Precarga paciente bloqueado (desde detalle de paciente) ======
+  useEffect(() => {
+    if (!open) return;
+    if (lockedPatient) {
+      setSelectedPatient(lockedPatient);
+      setQuery(lockedPatient.fullName || "");
+      setSearchResults([]);
+      setTab("existing");
     }
-    if (cleanupRanForOpen.current) return;
-    cleanupRanForOpen.current = true;
-    setAgendaReady(false);
-    (async () => {
-      try {
-        await appointmentsApi.cleanupExpiredLocks();
-        setAgendaReady(true);
-      } catch {
-        setAgendaReady(false);
-        toast.error("No fue posible preparar la agenda. Cierra el modal e inténtalo nuevamente.");
-      }
-    })();
+  }, [open, lockedPatient]);
+
+  // ====== Cargar doctores activos ======
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setLoadingDoctors(true);
+    doctorsApi.listActive({ branchId: BRANCH_ID })
+      .then((data) => { if (!cancelled) setDoctors(Array.isArray(data) ? data : []); })
+      .catch(() => { if (!cancelled) { setDoctors([]); toast.error("No fue posible cargar los doctores"); } })
+      .finally(() => { if (!cancelled) setLoadingDoctors(false); });
+    return () => { cancelled = true; };
   }, [open]);
 
-  // ====== Doctores (al abrir modal y tras limpieza de locks) ======
-  useEffect(() => {
-    if (!open || !agendaReady) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        setLoadingDoctors(true);
-        const data = await doctorsApi.listActive({ branchId: BRANCH_ID });
-        if (!cancelled) setDoctors(Array.isArray(data) ? data : []);
-      } catch {
-        if (!cancelled) {
-          setDoctors([]);
-          toast.error("No fue posible cargar los doctores");
-        }
-      } finally {
-        if (!cancelled) setLoadingDoctors(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [open, agendaReady]);
-
-  // ====== Búsqueda real de pacientes (debounced) ======
+  // ====== Búsqueda de pacientes ======
   const searchRequestId = useRef(0);
   useEffect(() => {
     if (!query.trim()) { setSearchResults([]); return; }
@@ -211,9 +191,7 @@ export default function CreateAppointmentDialog({ open, onOpenChange, defaultDat
     const t = setTimeout(async () => {
       try {
         const data = await patientsApi.search({ query: query.trim(), page: 0, size: 10 });
-        if (myId === searchRequestId.current) {
-          setSearchResults(Array.isArray(data?.content) ? data.content : []);
-        }
+        if (myId === searchRequestId.current) setSearchResults(Array.isArray(data?.content) ? data.content : []);
       } catch {
         if (myId === searchRequestId.current) setSearchResults([]);
       } finally {
@@ -223,205 +201,46 @@ export default function CreateAppointmentDialog({ open, onOpenChange, defaultDat
     return () => clearTimeout(t);
   }, [query]);
 
-  // ====== Start slots cuando paciente + doctor + fecha existen ======
-  const startSlotsRequestId = useRef(0);
-  useEffect(() => {
-    if (!agendaReady || !selectedPatient || !doctorId || !date) {
-      setStartSlots([]);
-      return;
-    }
-    const myId = ++startSlotsRequestId.current;
-    setLoadingStartSlots(true);
-    (async () => {
-      try {
-        const data = await appointmentsApi.startSlots({ doctorId, branchId: BRANCH_ID, date });
-        if (myId === startSlotsRequestId.current) {
-          setStartSlots(Array.isArray(data?.slots) ? data.slots : []);
-        }
-      } catch {
-        if (myId === startSlotsRequestId.current) {
-          setStartSlots([]);
-          toast.error("No fue posible cargar las horas disponibles");
-        }
-      } finally {
-        if (myId === startSlotsRequestId.current) setLoadingStartSlots(false);
-      }
-    })();
-  }, [selectedPatient?.id, doctorId, date, agendaReady]);
-
-  // ====== Handlers de cascada (resets) ======
-  const onPatientSelect = useCallback((p) => {
+  const onPatientSelect = (p) => {
     setSelectedPatient(p);
     setQuery(p.fullName || "");
     setSearchResults([]);
-    resetAppointmentFlow();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const onDoctorChange = async (v) => {
-    // Si ya existe un appointment bloqueado → PUT /appointments/{id}/dentist (sin crear nuevo lock).
-    if (appointmentId) {
-      const prevDoctorId = doctorId;
-      try {
-        setLocking(true);
-        await appointmentsApi.updateDentist(appointmentId, Number(v));
-        // OK → conservar appointmentId, actualizar doctor y limpiar horarios.
-        setDoctorId(v);
-        setStartTime("");
-        setEndSlots([]);
-        setEndTime("");
-        // El useEffect existente reconsulta /start-slots con el nuevo doctor automáticamente.
-      } catch (err) {
-        const msg = err?.response?.data?.message || err?.response?.data?.error || "";
-        const expired = /lock\s+has\s+expired/i.test(msg) || err?.response?.status === 410;
-        if (expired) {
-          toast.error("El bloqueo de la cita expiró. Reinicia la programación de la cita.");
-          // Reset al estado inicial del formulario (manteniendo paciente y fecha por UX).
-          setAppointmentId(null);
-          setDoctorId("");
-          setStartTime("");
-          setEndTime("");
-          setEndSlots([]);
-        } else {
-          toast.error("No fue posible actualizar el doctor");
-          // Revertir doctor visualmente; conservar appointmentId vigente.
-          setDoctorId(prevDoctorId);
-        }
-      } finally {
-        setLocking(false);
-      }
-      return;
-    }
-
-    // Sin appointmentId todavía → comportamiento original (flujo intacto).
-    setDoctorId(v);
-    setStartTime(""); setEndSlots([]); setEndTime(""); setAppointmentId(null);
-  };
-  const onDateChange = async (v) => {
-    // Si ya existe un appointment bloqueado → PUT /appointments/{id}/date (sin crear nuevo lock).
-    if (appointmentId) {
-      const prevDate = date;
-      try {
-        setLocking(true);
-        await appointmentsApi.updateDate(appointmentId, v);
-        // OK → conservar appointmentId, actualizar fecha y limpiar horarios.
-        setDate(v);
-        setStartTime("");
-        setEndSlots([]);
-        setEndTime("");
-        // El useEffect existente reconsulta /start-slots con la nueva fecha automáticamente.
-      } catch (err) {
-        const msg = err?.response?.data?.message || err?.response?.data?.error || "";
-        const expired = /lock\s+has\s+expired/i.test(msg) || err?.response?.status === 410;
-        if (expired) {
-          toast.error("El bloqueo de la cita expiró. Reinicia la programación de la cita.");
-          // Reset al estado inicial (conservando paciente y doctor por UX).
-          setAppointmentId(null);
-          setStartTime("");
-          setEndTime("");
-          setEndSlots([]);
-        } else {
-          toast.error("No fue posible actualizar la fecha");
-          setDate(prevDate);
-        }
-      } finally {
-        setLocking(false);
-      }
-      return;
-    }
-
-    // Sin appointmentId todavía → comportamiento original.
-    setDate(v);
-    setStartTime(""); setEndSlots([]); setEndTime(""); setAppointmentId(null);
   };
 
-  const onStartTimeChange = async (v) => {
-    if (!v) {
+  const apptError = (field) => appointmentTouched[field] && apptErrors[field];
+  const markApptTouched = (field) => setAppointmentTouched((t) => ({ ...t, [field]: true }));
+
+  // Slots dinámicos según fecha seleccionada (horario laboral + redondeo al siguiente bloque).
+  const startSlotOptions = useMemo(() => startSlots(date), [date]);
+  const endSlotOptions = useMemo(() => endSlots(date, startTime), [date, startTime]);
+  const noSlotsMessage = useMemo(() => {
+    if (!date || startSlotOptions.length > 0) return null;
+    if (isSunday(date)) return "La clínica no atiende los domingos.";
+    if (date === todayISO()) return "Ya no hay horarios disponibles para hoy.";
+    return "Sin horarios disponibles para esta fecha.";
+  }, [date, startSlotOptions.length]);
+
+  // Al cambiar de fecha, limpia horas si quedaron fuera del nuevo horario.
+  useEffect(() => {
+    if (!date) return;
+    if (startTime && !startSlotOptions.find((s) => s.value === startTime)) {
       setStartTime("");
-      setEndSlots([]); setEndTime(""); setAppointmentId(null);
-      return;
+      setEndTime("");
     }
+  }, [date, startSlotOptions, startTime]);
 
-    // Si ya hay un appointment bloqueado → actualizar la hora inicio del lock existente
-    // y obtener las horas fin disponibles vía GET /end-slots (sin crear nuevo lock).
-    if (appointmentId) {
-      const prevStart = startTime;
-      const prevEnd = endTime;
-      setStartTime(v);
-      // Limpia visualmente la hora fin; si la anterior sigue siendo válida (> nueva inicio), la conservamos.
-      setEndTime(prevEnd && prevEnd > v ? prevEnd : "");
-      try {
-        setLocking(true);
-        // Persistir nueva hora inicio en el appointment existente.
-        await appointmentsApi.updateStartTime(appointmentId, v);
-        // Pedir horas fin disponibles para esa hora inicio.
-        const data = await appointmentsApi.endSlots(appointmentId, v);
-        const slots = Array.isArray(data?.endSlots) ? data.endSlots : [];
-        setEndSlots(slots);
-        // Preseleccionar primera hora válida > nueva hora inicio (formato HH:mm).
-        const firstValid = slots.map(trimSec).find((s) => s > v) || trimSec(slots[0] || "");
-        setEndTime(firstValid);
-      } catch (err) {
-        const msg = err?.response?.data?.message || err?.response?.data?.error || "";
-        const expired = /lock\s+has\s+expired/i.test(msg) || err?.response?.status === 410;
-        if (expired) {
-          toast.error("El bloqueo de la cita expiró. Selecciona la hora inicio nuevamente.");
-          // Reset al estado previo a la selección de horario.
-          setAppointmentId(null);
-          setStartTime("");
-          setEndTime("");
-          setEndSlots([]);
-        } else {
-          toast.error("No fue posible actualizar la hora inicio");
-          // Revertir estado local para mantener consistencia con el backend.
-          setStartTime(prevStart);
-          setEndTime(prevEnd);
-        }
-      } finally {
-        setLocking(false);
-      }
-      return;
-    }
-
-    // Primer bloqueo: POST /appointments/lock (flujo existente, intacto).
+  // Al elegir hora inicial, sugiere hora fin = inicio + 1h (alineada al horario laboral).
+  const onStartTimeChange = (v) => {
     setStartTime(v);
-    setEndSlots([]); setEndTime(""); setAppointmentId(null);
-    try {
-      setLocking(true);
-      const lock = await appointmentsApi.lock({
-        doctorId: Number(doctorId),
-        branchId: BRANCH_ID,
-        patientId: selectedPatient.id,
-        date,
-        startTime: v,
-      });
-      setAppointmentId(lock.appointmentId);
-      const slots = Array.isArray(lock.endSlots) ? lock.endSlots : [];
-      setEndSlots(slots);
-      // Preseleccionar primera hora válida > startTime (formato HH:mm)
-      const firstValid = slots.map(trimSec).find((s) => s > v) || trimSec(slots[0] || "");
-      setEndTime(firstValid);
-    } catch {
-      toast.error("No fue posible reservar el horario");
-      setStartTime("");
-    } finally {
-      setLocking(false);
-    }
+    markApptTouched("startTime");
+    const suggested = defaultEndTime(date, v);
+    if (suggested) setEndTime(suggested);
   };
 
-  const onEndTimeChange = async (v) => {
-    setEndTime(v);
-    if (!v || !appointmentId) return;
-    try {
-      setUpdatingEnd(true);
-      await appointmentsApi.updateEndTime(appointmentId, v);
-    } catch {
-      toast.error("No fue posible actualizar la hora fin");
-    } finally {
-      setUpdatingEnd(false);
-    }
+  const onReasonChange = (_id, opt) => {
+    setReasonName(opt?.label || reasonName);
+    markApptTouched("reason");
   };
-
-  const onReasonChange = (_id, opt) => setReasonName(opt?.label || reasonName);
   const onCreateReason = (text) => {
     const created = clinicStore.addReason(text, user);
     toast.success(`Motivo "${text}" agregado al catálogo local`);
@@ -429,35 +248,36 @@ export default function CreateAppointmentDialog({ open, onOpenChange, defaultDat
     return { value: created.id, label: created.name };
   };
 
-  // ====== Cascada de habilitación ======
-  const canDoctor = !!selectedPatient;
-  const canDate = canDoctor && !!doctorId;
-  const canStart = canDate && !!date;
-  const canEnd = canStart && endSlots.length > 0;
-  const canReason = canEnd && !!endTime;
-  const canSubmit = canReason && !!reasonName.trim() && !!appointmentId && !confirming;
-
-  // ====== Submit: confirmar cita ======
-  const handleConfirmAppointment = async (e) => {
+  // ====== Submit: crear cita ======
+  const handleCreate = async (e) => {
     e.preventDefault();
-    if (!canSubmit) {
-      toast.error("Completa todos los campos requeridos");
+    setAppointmentTouched({ patient: true, date: true, startTime: true, endTime: true, reason: true });
+    if (!isApptValid) {
+      toast.error(Object.values(apptErrors)[0] || "Revisa los campos");
       return;
     }
+    setCreating(true);
     try {
-      setConfirming(true);
-      await appointmentsApi.confirm(appointmentId, {
+      const created = await appointmentsApi.create({
         patientId: selectedPatient.id,
+        branchId: BRANCH_ID,
+        appointmentDate: date,
+        startTime,
+        endTime,
+        doctorId: doctorKey === NO_DOCTOR ? null : Number(doctorKey),
         reason: reasonName.trim(),
-        notes: notes?.trim() || "",
+        notes: notes.trim(),
       });
-      toast.success(`Cita creada para ${selectedPatient.fullName}`);
+      const doctorLbl = doctorKey === NO_DOCTOR ? "sin doctor asignado" : (created.doctorAsignadoName || "doctor asignado");
+      toast.success(`Cita creada para ${selectedPatient.fullName} (${doctorLbl})`);
+      onCreated?.(created);
       fullReset();
       onOpenChange(false);
-    } catch {
-      toast.error("No fue posible confirmar la cita");
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      toast.error(typeof detail === "string" ? detail : "No fue posible crear la cita");
     } finally {
-      setConfirming(false);
+      setCreating(false);
     }
   };
 
@@ -468,14 +288,8 @@ export default function CreateAppointmentDialog({ open, onOpenChange, defaultDat
 
   const handleRegisterPatient = async (e) => {
     e.preventDefault();
-    setTouched({
-      name: true, lastName: true, email: true, phone: true, gender: true,
-      birthDate: true, address: true,
-    });
-    if (!isPatientFormValid) {
-      toast.error("Revisa los campos en rojo");
-      return;
-    }
+    setTouched({ name: true, lastName: true, email: true, phone: true, gender: true, birthDate: true, address: true });
+    if (!isPatientFormValid) { toast.error("Revisa los campos en rojo"); return; }
     const payload = {
       name: newPatient.name.trim(),
       lastName: newPatient.lastName.trim(),
@@ -493,8 +307,6 @@ export default function CreateAppointmentDialog({ open, onOpenChange, defaultDat
       const created = await patientsApi.create(payload);
       const fullName = `${created.name} ${created.lastName}`.trim();
       toast.success(`Paciente ${fullName} registrado correctamente. ID: ${created.id}`);
-
-      // Preselección en tab "Paciente existente" con la shape del buscador.
       const adapted = {
         id: created.id,
         fullName,
@@ -504,12 +316,10 @@ export default function CreateAppointmentDialog({ open, onOpenChange, defaultDat
         photoUrl: created.photoUrl,
         active: true,
       };
-      // Cambia a existente, limpia el form nuevo y deja el paciente seleccionado.
       resetPatientForm();
       setSelectedPatient(adapted);
       setQuery(fullName);
       setSearchResults([]);
-      resetAppointmentFlow();
       setTab("existing");
     } catch (err) {
       const status = err?.response?.status;
@@ -532,69 +342,90 @@ export default function CreateAppointmentDialog({ open, onOpenChange, defaultDat
           <DialogDescription>
             {tab === "new"
               ? "Da de alta a un paciente nuevo. La cita podrás agendarla después desde Paciente existente."
-              : "Programa una cita para un paciente existente."}
+              : "Programa una cita. El doctor es opcional — si lo dejas vacío, la cita aparecerá en Pacientes citados sin asignar."}
           </DialogDescription>
         </DialogHeader>
 
         <Tabs value={tab} onValueChange={setTab}>
-          <TabsList className="bg-secondary">
-            <TabsTrigger value="existing" data-testid="tab-existing-patient"><Search size={13} className="mr-1.5" /> Paciente existente</TabsTrigger>
-            <TabsTrigger value="new" data-testid="tab-new-patient"><UserPlus size={13} className="mr-1.5" /> Paciente nuevo</TabsTrigger>
-          </TabsList>
+          {!lockedPatient && (
+            <TabsList className="bg-secondary">
+              <TabsTrigger value="existing" data-testid="tab-existing-patient"><Search size={13} className="mr-1.5" /> Paciente existente</TabsTrigger>
+              <TabsTrigger value="new" data-testid="tab-new-patient"><UserPlus size={13} className="mr-1.5" /> Paciente nuevo</TabsTrigger>
+            </TabsList>
+          )}
 
-          {/* ===================== EXISTENTE ===================== */}
+          {/* ============ EXISTENTE ============ */}
           <TabsContent value="existing" className="mt-4">
-            <form onSubmit={handleConfirmAppointment} className="space-y-5">
-              {/* Buscador */}
+            <form onSubmit={handleCreate} className="space-y-5">
+              {/* Buscador paciente — oculto si viene un paciente bloqueado desde el detalle */}
               <div className="space-y-3">
-                <div className="relative">
-                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    placeholder={searchPlaceholder}
-                    value={query}
-                    onChange={(e) => { setQuery(e.target.value); setSelectedPatient(null); }}
-                    className="pl-9"
-                    data-testid="patient-search-input"
-                  />
-                  {searching && (
-                    <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground animate-spin" />
-                  )}
-                </div>
-                {searchResults.length > 0 && (
-                  <div className="rounded-lg border border-border max-h-56 overflow-y-auto" data-testid="patient-results">
-                    {searchResults.map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => onPatientSelect(p)}
-                        className={`w-full text-left p-3 hover:bg-secondary/50 border-b border-border/60 last:border-0 ${selectedPatient?.id === p.id ? "bg-secondary" : ""}`}
-                        data-testid={`patient-result-${p.id}`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <p className="text-sm font-medium">{valueOrSR(p.fullName)}</p>
-                          <span className="text-[10px] font-mono text-muted-foreground">{valueOrSR(p.expedientNumber)}</span>
-                        </div>
-                        <p className="text-xs text-muted-foreground">{valueOrSR(p.phone)} · {valueOrSR(p.email)}</p>
-                      </button>
-                    ))}
-                  </div>
+                {!lockedPatient && (
+                  <>
+                    <div className="relative">
+                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        placeholder={searchPlaceholder}
+                        value={query}
+                        onChange={(e) => { setQuery(e.target.value); setSelectedPatient(null); }}
+                        className="pl-9"
+                        data-testid="patient-search-input"
+                      />
+                      {searching && (
+                        <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground animate-spin" />
+                      )}
+                    </div>
+                    {searchResults.length > 0 && (
+                      <div className="rounded-lg border border-border max-h-56 overflow-y-auto" data-testid="patient-results">
+                        {searchResults.map((p) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => onPatientSelect(p)}
+                            className={`w-full text-left p-3 hover:bg-secondary/50 border-b border-border/60 last:border-0 ${selectedPatient?.id === p.id ? "bg-secondary" : ""}`}
+                            data-testid={`patient-result-${p.id}`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <p className="text-sm font-medium">{valueOrSR(p.fullName)}</p>
+                              <span className="text-[10px] font-mono text-muted-foreground">{valueOrSR(p.expedientNumber)}</span>
+                            </div>
+                            <p className="text-xs text-muted-foreground">{valueOrSR(p.phone)} · {valueOrSR(p.email)}</p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </>
                 )}
                 {selectedPatient && (
-                  <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-xs" data-testid="selected-patient">
-                    Paciente seleccionado: <span className="font-medium">{valueOrSR(selectedPatient.fullName)}</span> · {valueOrSR(selectedPatient.expedientNumber)}
+                  <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-xs flex items-center justify-between" data-testid="selected-patient">
+                    <span>
+                      Paciente seleccionado: <span className="font-medium">{valueOrSR(selectedPatient.fullName)}</span> · {valueOrSR(selectedPatient.expedientNumber)}
+                    </span>
+                    {!lockedPatient && (
+                      <button
+                        type="button"
+                        className="text-[11px] underline text-muted-foreground hover:text-foreground"
+                        onClick={() => { setSelectedPatient(null); setQuery(""); }}
+                      >
+                        cambiar
+                      </button>
+                    )}
                   </div>
+                )}
+                {apptError("patient") && !selectedPatient && (
+                  <p className="text-[11px] text-rose-500" data-testid="appt-patient-error">{apptErrors.patient}</p>
                 )}
               </div>
 
-              {/* Resto del flujo (cascada) */}
+              {/* Datos de la cita */}
               <div className="border-t border-border pt-4 grid grid-cols-2 gap-3">
                 <div className="col-span-2">
-                  <Label className="text-xs">Doctor</Label>
-                  <Select value={doctorId} onValueChange={onDoctorChange} disabled={!canDoctor || loadingDoctors}>
+                  <Label className="text-xs">Doctor <span className="text-muted-foreground">(opcional)</span></Label>
+                  <Select value={doctorKey} onValueChange={setDoctorKey} disabled={loadingDoctors}>
                     <SelectTrigger className="mt-1" data-testid="appt-doctor">
-                      <SelectValue placeholder={loadingDoctors ? "Cargando doctores…" : "Selecciona doctor"} />
+                      <SelectValue placeholder={loadingDoctors ? "Cargando doctores…" : "Sin doctor (asignar después)"} />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value={NO_DOCTOR}>Sin doctor (asignar después)</SelectItem>
                       {doctors.map((d) => (
                         <SelectItem key={d.id} value={String(d.id)}>
                           {valueOrSR(d.fullName)}{d.specialty ? ` · ${d.specialty}` : ""}
@@ -602,52 +433,75 @@ export default function CreateAppointmentDialog({ open, onOpenChange, defaultDat
                       ))}
                     </SelectContent>
                   </Select>
+                  {doctorKey === NO_DOCTOR && (
+                    <p className="text-[11px] text-muted-foreground mt-1">La cita se creará en &quot;Pacientes citados&quot; sin doctor. Podrás asignarlo después.</p>
+                  )}
                 </div>
 
                 <div className="col-span-2">
                   <Label className="text-xs">Fecha</Label>
                   <Input
-                    data-testid="appt-date"
                     type="date"
                     value={date}
                     min={todayISO()}
-                    onChange={(e) => onDateChange(e.target.value)}
-                    disabled={!canDate}
-                    className="mt-1"
+                    onChange={(e) => { setDate(e.target.value); markApptTouched("date"); }}
+                    onBlur={() => markApptTouched("date")}
+                    className={`mt-1 ${errCls(apptError("date"))}`}
+                    data-testid="appt-date"
                   />
+                  {apptError("date") && <p className="text-[11px] text-rose-500 mt-1">{apptErrors.date}</p>}
+                  {noSlotsMessage && !apptError("date") && (
+                    <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1" data-testid="appt-closed-warning">
+                      {noSlotsMessage}
+                    </p>
+                  )}
                 </div>
 
                 <div>
                   <Label className="text-xs">Hora inicial</Label>
-                  <Select value={startTime} onValueChange={onStartTimeChange} disabled={!canStart || loadingStartSlots || locking}>
-                    <SelectTrigger className="mt-1" data-testid="appt-start-time">
-                      <SelectValue placeholder={loadingStartSlots ? "Cargando…" : (locking ? "Reservando…" : "Selecciona una hora")} />
+                  <Select value={startTime} onValueChange={onStartTimeChange} disabled={!date || startSlotOptions.length === 0}>
+                    <SelectTrigger
+                      className={`mt-1 ${errCls(apptError("startTime"))}`}
+                      data-testid="appt-start-time"
+                      onBlur={() => markApptTouched("startTime")}
+                    >
+                      <SelectValue placeholder={startSlotOptions.length ? "Selecciona…" : "Sin horarios"} />
                     </SelectTrigger>
                     <SelectContent>
-                      {startSlots.map((s) => (
-                        <SelectItem key={s} value={trimSec(s)}>{trimSec(s)}</SelectItem>
+                      {startSlotOptions.map((s) => (
+                        <SelectItem key={s.value} value={s.value} data-testid={`appt-start-slot-${s.value}`}>{s.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  {apptError("startTime") && <p className="text-[11px] text-rose-500 mt-1">{apptErrors.startTime}</p>}
                 </div>
 
                 <div>
                   <Label className="text-xs">Hora fin</Label>
-                  <Select value={endTime} onValueChange={onEndTimeChange} disabled={!canEnd || updatingEnd}>
-                    <SelectTrigger className="mt-1" data-testid="appt-end-time">
-                      <SelectValue placeholder={updatingEnd ? "Actualizando…" : "Selecciona una hora"} />
+                  <Select
+                    value={endTime}
+                    onValueChange={(v) => { setEndTime(v); markApptTouched("endTime"); }}
+                    disabled={!startTime}
+                  >
+                    <SelectTrigger
+                      className={`mt-1 ${errCls(apptError("endTime"))}`}
+                      data-testid="appt-end-time"
+                      onBlur={() => markApptTouched("endTime")}
+                    >
+                      <SelectValue placeholder={endSlotOptions.length ? "Selecciona…" : "—"} />
                     </SelectTrigger>
                     <SelectContent>
-                      {endSlots.map((s) => (
-                        <SelectItem key={s} value={trimSec(s)}>{trimSec(s)}</SelectItem>
+                      {endSlotOptions.map((s) => (
+                        <SelectItem key={s.value} value={s.value} data-testid={`appt-end-slot-${s.value}`}>{s.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  {apptError("endTime") && <p className="text-[11px] text-rose-500 mt-1">{apptErrors.endTime}</p>}
                 </div>
 
                 <div className="col-span-2">
                   <Label className="text-xs">Motivo</Label>
-                  <div className={`mt-1 ${canReason ? "" : "opacity-50 pointer-events-none"}`}>
+                  <div className="mt-1">
                     <Combobox
                       value={reasons.find((r) => r.name === reasonName)?.id || ""}
                       onChange={onReasonChange}
@@ -658,6 +512,7 @@ export default function CreateAppointmentDialog({ open, onOpenChange, defaultDat
                       testId="appt-reason"
                     />
                   </div>
+                  {apptError("reason") && <p className="text-[11px] text-rose-500 mt-1">{apptErrors.reason}</p>}
                 </div>
 
                 <div className="col-span-2">
@@ -666,7 +521,6 @@ export default function CreateAppointmentDialog({ open, onOpenChange, defaultDat
                     data-testid="appt-notes"
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
-                    disabled={!canReason}
                     className="mt-1 min-h-[60px]"
                   />
                 </div>
@@ -674,18 +528,14 @@ export default function CreateAppointmentDialog({ open, onOpenChange, defaultDat
 
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-                <Button
-                  type="submit"
-                  data-testid="create-appointment-submit"
-                  disabled={!canSubmit}
-                >
-                  {confirming ? "Creando…" : "Crear cita"}
+                <Button type="submit" data-testid="create-appointment-submit" disabled={creating}>
+                  {creating ? <><Loader2 size={14} className="mr-1.5 animate-spin" /> Creando…</> : "Crear cita"}
                 </Button>
               </DialogFooter>
             </form>
           </TabsContent>
 
-          {/* ===================== PACIENTE NUEVO ===================== */}
+          {/* ============ PACIENTE NUEVO ============ */}
           <TabsContent value="new" className="mt-4">
             <form onSubmit={handleRegisterPatient} className="space-y-5">
               <div className="grid grid-cols-2 gap-3">

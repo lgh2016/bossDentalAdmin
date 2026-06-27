@@ -80,16 +80,38 @@ export const appointmentsApi = {
   },
 
   /** GET /appointments/schedule/day?date=&branchId=&dentistId= */
-  async scheduleDay({ date, branchId = 1, dentistId }) {
+  async scheduleDay({ date, branchId = 1, dentistId, signal } = {}) {
     const params = { date, branchId };
     if (dentistId != null) params.dentistId = dentistId;
-    const { data } = await httpClient.get(API_ENDPOINTS.appointments.scheduleDay, { params });
+    const { data } = await httpClient.get(API_ENDPOINTS.appointments.scheduleDay, { params, signal });
     return data;
   },
 
   /** GET /appointments/{id} — detalle de la cita */
-  async getById(appointmentId) {
-    const { data } = await httpClient.get(`${API_ENDPOINTS.appointments.base}/${appointmentId}`);
+  async getById(appointmentId, { signal } = {}) {
+    const { data } = await httpClient.get(`${API_ENDPOINTS.appointments.base}/${appointmentId}`, { signal });
+    return data;
+  },
+
+  /** GET /appointments/{id}/history — bitácora de la cita */
+  async history(appointmentId, { signal } = {}) {
+    const { data } = await httpClient.get(`${API_ENDPOINTS.appointments.base}/${appointmentId}/history`, { signal });
+    return data;
+  },
+
+  /** POST /appointments/walk-in — paciente sin cita previa */
+  async walkIn({ patientId, branchId = 1, doctorId = null, reason = "" }) {
+    const payload = { patientId, branchId, reason };
+    if (doctorId != null) payload.doctorId = doctorId;
+    const { data } = await httpClient.post(`${API_ENDPOINTS.appointments.base}/walk-in`, payload);
+    return data;
+  },
+
+  /** POST /appointments/create — cita programada directa, doctor opcional */
+  async create({ patientId, branchId = 1, appointmentDate, startTime, endTime, doctorId = null, reason, notes = "" }) {
+    const payload = { patientId, branchId, appointmentDate, startTime, endTime, reason, notes };
+    if (doctorId != null) payload.doctorId = doctorId;
+    const { data } = await httpClient.post(`${API_ENDPOINTS.appointments.base}/create`, payload);
     return data;
   },
 

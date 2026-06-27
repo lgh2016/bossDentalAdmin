@@ -1,0 +1,43 @@
+{
+  "summary": "Boss Dental P1 — DENTIST role integration. Backend: 76/77 pytest passing (36 P0 baseline + 23 P1 + 18 NEW dentist tests in backend_test_dentist.py). 1 pre-existing flaky failure (test_get_appointment_detail durationMinutes==0) NOT related to dentist work — passed in stand-alone run, failed in full-suite run due to data accumulation. Frontend: smoke E2E con dentist@bossdental.com OK — /dashboard carga KPIs reales (15/2/2/2/22), las 4 listas (waiting, inprogress, today, completed) renderizan, /mis-pacientes muestra grid de 22 pacientes, /mis-citas muestra agenda con 15 citas hoy + 30 días siguientes. Cero errores de consola. doctorId:1 expuesto en login y /dentist/me devuelve Carlos Hernández/Ortodoncia/branches=[1]. Permisos OK: ADMIN/RECEPTION → 403, sin Bearer → 403. Reasignar a doctor 2 retira la cita de /dentist/today, reasignar a 1 la devuelve. Seed idempotente verificado (doctorId:1 persiste, capacity:4 intacto).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/appointments/{id}", "issue": "test_get_appointment_detail intermitente: durationMinutes == 0 cuando la cita acaba de pasar de LOCKED→CONFIRMED en estado de DB saturado. Fallo flaky, pasa al re-ejecutar el archivo solo. No es regresión del role DENTIST."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/backend_test_p1.py",
+    "/app/backend/tests/backend_test_dentist.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(Opcional, no bloqueante) Investigar por qué durationMinutes puede ser 0 en GET /appointments/{id} tras un confirm — probablemente endTime no llega a setearse en cierto camino. Verificable con: lock+confirm+GET en un run aislado.",
+    "(Opcional) Renombrar archivos de tests a `test_*.py` o agregar pytest.ini con `python_files = test_*.py backend_test*.py` para que `pytest tests/` los recoja a todos sin tener que pasar paths explícitos."
+  ],
+  "critical_code_review_comments": [
+    "routers/dentist.py: limpio, async, _hydrate hace una sola consulta a patients — eficiente. _doctor_match incluye fallback 'asignado IS NULL AND solicitado=me' para today/agenda — coherente con el modelo.",
+    "deps.py current_dentist: devuelve 403 'Sólo dentistas...' tanto para falta de role como para doctorId faltante — adecuado.",
+    "auth.py _serialize_user: ahora expone doctorId. Validado en login (DENTIST=1, otros=None).",
+    "El endpoint /dentist/waiting-room NO filtra por doctorAsignado (intencional: el dentista decide a quién atender en su branch). Está documentado en el código.",
+    "/dentist/in-progress y /dentist/completed-today usan _doctor_match_strict (sólo doctorAsignado=me) — correcto: evita ver atenciones de otros doctores en mi sucursal.",
+    "/dentist/agenda default: hoy en adelante, sin tope superior. Limit 200. Aceptable; podría paginar si una agenda crece >200 citas (poco probable a corto plazo).",
+    "/dentist/activity wrapping con { data: { content }, success, message } difiere del shape plano de /dentist/patients ({ content, page, size, ... }). Considerar unificar contratos."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test_dentist.py (NUEVO — 18 tests para el role DENTIST)"
+  ],
+  "success_rate": {"backend": "98.7% (76/77; 1 flaky pre-existente no relacionada)", "frontend": "100% smoke E2E (login + dashboard + mis-pacientes + mis-citas)"},
+  "test_credentials": "admin@bossdental.com/admin123, reception@bossdental.com/admin1234, dentist@bossdental.com/dentist123 (doctorId=1, Carlos Hernández, Ortodoncia)",
+  "seed_data_creation": "Cada corrida del archivo backend_test_dentist.py crea ~8 pacientes TEST_DENT_* (tags: E2E, OTHER, AGENDA, RNG, SEARCHME, ALIAS, ASSIGN) y ~15 citas en fechas +220 a +230 días + algunas HOY. Sin limpieza automática. Para reset: drop appointments + patients con prefijo TEST_DENT_.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Tres archivos de tests en /app/backend/tests/: backend_test.py (P0, 36), backend_test_p1.py (P1, 23), backend_test_dentist.py (DENTIST, 18). Pytest NO auto-recoge p1/dentist porque sus nombres no matchean `test_*.py` ni `*_test.py`. Para correr toda la suite: `cd /app/backend && python -m pytest tests/backend_test.py tests/backend_test_p1.py tests/backend_test_dentist.py --tb=short --junitxml=/app/test_reports/pytest/pytest_results.xml`. test_get_appointment_detail (P0) es flaky bajo carga — si falla con durationMinutes==0, reintentar archivo individual. El dentist en frontend recibe sidebar con: Dashboard / Mis citas / Expedientes / Pacientes asignados / Tratamientos. KPIs cargan rápido (<1s tras login). El toast 'Bienvenido, Carlos Hernández' confirma _serialize_user con role+nombre.",
+  "rca_of_the_issue": "Single flaky failure en P0 test_get_appointment_detail: cuando el slot está saturado tras múltiples runs, alguna update intermedia entre lock+confirm deja endTime sin actualizar → durationMinutes=0. No es bug del rol DENTIST, no afecta P1 dentist work. Solución sugerida (no testeada): en /appointments/{id}/confirm, asegurar que endTime se recalcula o copia desde el lock antes de retornar el doc final."
+}

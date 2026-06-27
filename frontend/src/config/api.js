@@ -1,10 +1,30 @@
 /**
  * Configuración centralizada de API.
- * Todas las llamadas al backend deben tomar la URL desde aquí.
+ *
+ * Única variable de entorno admitida: VITE_API_BASE_URL
+ *
+ * Ejemplos:
+ *   - Local:   VITE_API_BASE_URL=http://127.0.0.1:8001/api
+ *   - Preview: VITE_API_BASE_URL=https://<host>.preview.emergentagent.com/api
+ *
+ * Sin fallback silencioso. Si la variable no está configurada, se loguea
+ * un error claro y las llamadas fallarán de inmediato (no apunta a producción).
+ *
+ * Todas las llamadas al backend deben pasar por este módulo.
  */
 const fromEnv = import.meta.env.VITE_API_BASE_URL;
 
-export const API_BASE_URL = (fromEnv || "https://api.bossdental.com.mx").replace(/\/+$/, "");
+if (!fromEnv) {
+  // eslint-disable-next-line no-console
+  console.error(
+    "[Boss Dental] VITE_API_BASE_URL no está configurada. " +
+    "Define la URL del backend en frontend/.env (ej. http://127.0.0.1:8001/api).",
+  );
+}
+
+// Sanea trailing slashes. Si falta, queda como cadena vacía (las requests fallarán
+// con un error claro de URL inválida en lugar de pegarle a producción).
+export const API_BASE_URL = (fromEnv || "").replace(/\/+$/, "");
 
 // Endpoints relativos. Concatenarse con httpClient (baseURL = API_BASE_URL)
 export const API_ENDPOINTS = {
@@ -15,26 +35,24 @@ export const API_ENDPOINTS = {
     refresh: "/auth/refresh",
   },
   patients: {
-    list: "/patients", // POST crear, GET listar/buscar paginado
+    list: "/patients",
   },
   doctors: {
-    active: "/doctors/active", // GET ?branchId=
+    active: "/doctors/active",
   },
   appointments: {
     base: "/appointments",
-    startSlots: "/appointments/start-slots", // GET ?doctorId=&branchId=&date=
-    lock: "/appointments/lock", // POST
-    cleanupExpiredLocks: "/appointments/cleanup-expired-locks", // POST
-    scheduleMonth: "/appointments/schedule/month", // GET ?year=&month=&branchId=&dentistId=
-    scheduleDay: "/appointments/schedule/day", // GET ?date=&branchId=&dentistId=
-    // dinámicos: /appointments/{id} (GET detalle), /appointments/{id}/end-time (PUT),
-    //           /appointments/{id}/confirm (PUT), /appointments/{id}/end-slots (GET ?startTime=)
+    startSlots: "/appointments/start-slots",
+    lock: "/appointments/lock",
+    cleanupExpiredLocks: "/appointments/cleanup-expired-locks",
+    scheduleMonth: "/appointments/schedule/month",
+    scheduleDay: "/appointments/schedule/day",
   },
   dashboard: {
-    todayCount: "/api/dashboard/appointments/today/count", // GET
-    todayPaged: "/api/dashboard/appointments/today", // GET ?page=&size=
+    todayCount: "/dashboard/appointments/today/count",
+    todayPaged: "/dashboard/appointments/today",
   },
 };
 
-// Modo mock-fallback: activar si el backend real no responde
-export const ALLOW_MOCK_FALLBACK = true;
+// Modo mock-fallback: desactivado — usamos FastAPI como único backend.
+export const ALLOW_MOCK_FALLBACK = false;

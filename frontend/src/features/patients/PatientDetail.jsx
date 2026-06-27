@@ -8,7 +8,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { useClinic, clinicStore } from "@/store/clinicStore";
 import { useAuth } from "@/context/AuthContext";
-import { treatments } from "@/mocks";
 import { currencyMXN, formatDateLong } from "@/utils/format";
 import { ROLES } from "@/constants/roles";
 import ChangeDoctorDialog from "@/features/appointments/ChangeDoctorDialog";
@@ -18,8 +17,11 @@ import CancelAppointmentDialog from "@/features/appointments/CancelAppointmentDi
 import RegisterPaymentDialog from "@/features/payments/RegisterPaymentDialog";
 import CancelPaymentDialog from "@/features/payments/CancelPaymentDialog";
 import QuotationEditor from "@/features/quotations/QuotationEditor";
+import TreatmentEditor from "@/features/treatments/TreatmentEditor";
 import PatientHistory from "./PatientHistory";
 import PatientAppointmentsTab from "./PatientAppointmentsTab";
+import PatientNotes from "./PatientNotes";
+import EditPatientDialog from "./EditPatientDialog";
 import { patientsApi } from "@/services/patientsApi";
 import { cn } from "@/lib/utils";
 
@@ -42,6 +44,7 @@ export default function PatientDetail() {
   const [detail, setDetail] = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(true);
   const [detailError, setDetailError] = useState(null);
+  const [detailRefreshKey, setDetailRefreshKey] = useState(0);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -60,16 +63,30 @@ export default function PatientDetail() {
       }
     })();
     return () => { cancelled = true; ctrl.abort(); };
-  }, [id]);
+  }, [id, detailRefreshKey]);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [doctorOpen, setDoctorOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [rescheduleAppt, setRescheduleAppt] = useState(null);
   const [cancelAppt, setCancelAppt] = useState(null);
   const [registerPayOpen, setRegisterPayOpen] = useState(false);
   const [cancelPayTarget, setCancelPayTarget] = useState(null);
   const [tab, setTab] = useState(params.get("tab") || "summary");
   const highlightId = params.get("highlight");
+
+  // Pagos reales del backend (reemplaza los del store local)
+  const [bePayments, setBePayments] = useState([]);
+  const [loadingPayments, setLoadingPayments] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingPayments(true);
+    patientsApi.listPayments(id)
+      .then((r) => { if (!cancelled) setBePayments(r.items); })
+      .catch(() => { if (!cancelled) setBePayments([]); })
+      .finally(() => { if (!cancelled) setLoadingPayments(false); });
+    return () => { cancelled = true; };
+  }, [id, detailRefreshKey]);
 
   useEffect(() => {
     const t = params.get("tab"); if (t) setTab(t);
@@ -78,7 +95,6 @@ export default function PatientDetail() {
   // Datos del store local sólo se usan en las pestañas que aún no migran al WS.
   const apts = appointments.filter((a) => a.patientId === id).sort((a, b) => `${b.date}${b.time}`.localeCompare(`${a.date}${a.time}`));
   const pays = payments.filter((x) => x.patientId === id);
-  const treats = treatments.filter((t) => t.patientId === id);
   const today = new Date().toISOString().slice(0, 10);
   const nextApptLocal = apts.find((a) => a.date >= today && a.status !== "Cancelada");
 
@@ -119,7 +135,7 @@ export default function PatientDetail() {
           : (loadingDetail ? "Cargando detalle…" : (detailError || ""))}
         actions={
           <>
-            <Button variant="outline" size="sm" onClick={() => setCreateOpen(true)} data-testid="patient-create-appt"><Plus size={13} className="mr-1" /> Crear cita</Button>
+            <Button variant="outline" size="sm" onClick={() => setEditOpen(true)} data-testid="patient-edit"><Pencil size={13} className="mr-1" /> Editar paciente</Button>
             <Button variant="outline" size="sm" onClick={() => setDoctorOpen(true)} disabled={!nextApptLocal} data-testid="patient-change-doctor"><RefreshCw size={13} className="mr-1" /> {nextApptLocal?.doctorId ? "Cambiar doctor" : "Asignar doctor"}</Button>
           </>
         }
@@ -182,7 +198,7 @@ export default function PatientDetail() {
               <TabsTrigger value="card" data-testid="tab-card"><IdCard size={13} className="mr-1.5" />Carnet</TabsTrigger>
               <TabsTrigger value="appointments" data-testid="tab-appointments"><Calendar size={13} className="mr-1.5" />Citas</TabsTrigger>
               <TabsTrigger value="treatments" data-testid="tab-treatments"><Stethoscope size={13} className="mr-1.5" />Tratamientos</TabsTrigger>
-              <TabsTrigger value="budget" data-testid="tab-budget" onClick={() => clinicStore.consultBudget(id, user)}><FileText size={13} className="mr-1.5" />Cotización</TabsTrigger>
+              <TabsTrigger value="budget" data-testid="tab-budget" onClick={() => clinicStore.consultBudget(id, user)}><FileText size={13} className="mr-1.5" />Presupuesto</TabsTrigger>
               <TabsTrigger value="payments" data-testid="tab-payments"><Receipt size={13} className="mr-1.5" />Pagos</TabsTrigger>
               <TabsTrigger value="history" data-testid="tab-history"><Activity size={13} className="mr-1.5" />Historial</TabsTrigger>
               <TabsTrigger value="notes" data-testid="tab-notes"><FileText size={13} className="mr-1.5" />Notas</TabsTrigger>
@@ -242,18 +258,20 @@ export default function PatientDetail() {
               />
             </TabsContent>
 
-            <TabsContent value="treatments" className="mt-4 space-y-3">
-              {treats.length === 0 ? <p className="text-sm text-muted-foreground">Sin tratamientos.</p> : treats.map((t) => (
-                <div key={t.id} className="rounded-xl border border-border p-4">
-                  <div className="flex items-center justify-between"><p className="text-sm font-medium">{t.name}</p><StatusBadge value={t.status} /></div>
-                  <div className="mt-3 h-1.5 bg-secondary rounded-full overflow-hidden"><div className="h-full bg-primary" style={{ width: `${t.progress}%` }} /></div>
-                  <p className="text-xs text-muted-foreground mt-2">{t.sessions.done}/{t.sessions.total} sesiones · {currencyMXN(t.totalCost)}</p>
-                </div>
-              ))}
+            <TabsContent value="treatments" className="mt-4">
+              <TreatmentEditor
+                patientId={Number(id)}
+                refreshKey={detailRefreshKey}
+                onChanged={() => setDetailRefreshKey((k) => k + 1)}
+              />
             </TabsContent>
 
             <TabsContent value="budget" className="mt-4">
-              <QuotationEditor patientId={id} />
+              <QuotationEditor
+                patientId={Number(id)}
+                onSaved={() => setDetailRefreshKey((k) => k + 1)}
+                onStartTreatment={() => { setDetailRefreshKey((k) => k + 1); setTab("treatments"); }}
+              />
             </TabsContent>
 
             <TabsContent value="payments" className="mt-4 space-y-3">
@@ -261,55 +279,75 @@ export default function PatientDetail() {
                 <Button size="sm" onClick={() => setRegisterPayOpen(true)} data-testid="pays-register"><ReceiptText size={13} className="mr-1" /> Registrar pago</Button>
               </div>
               <div className="rounded-xl border border-border divide-y divide-border" data-testid="patient-payments-list">
-                {pays.map((x) => (
+                {loadingPayments && (
+                  <p className="text-sm text-muted-foreground p-6 text-center">Cargando pagos…</p>
+                )}
+                {!loadingPayments && bePayments.map((x) => (
                   <div
                     key={x.id}
                     className={cn(
                       "flex items-center gap-4 p-3 flex-wrap transition-shadow",
-                      x.status === "Cancelado" && "opacity-60",
                       highlightId === x.id && "ring-2 ring-primary/50 bg-primary/5",
                     )}
                     data-testid={`patient-payment-${x.id}`}
                   >
-                    <div className="w-24 text-xs">{x.date}</div>
+                    <div className="w-24 text-xs font-mono">{x.paymentDate}</div>
                     <div className="flex-1 min-w-0">
-                      <p className={cn("text-sm font-medium truncate", x.status === "Cancelado" && "line-through")}>{x.concept}</p>
+                      <p className="text-sm font-medium truncate">{x.concept}</p>
                       <p className="text-xs text-muted-foreground">
-                        {x.method}{x.registeredBy && ` · registrado por ${x.registeredBy}`}
-                        {x.status === "Cancelado" && x.cancelReason && <> · cancelado por {x.cancelledBy} · {x.cancelReason}</>}
+                        {x.method}{x.createdByName && ` · registrado por ${x.createdByName}`}
+                        {x.notes && ` · ${x.notes}`}
                       </p>
                     </div>
-                    <p className={cn("text-sm font-semibold", x.status === "Cancelado" && "line-through")}>{currencyMXN(x.amount)}</p>
-                    <StatusBadge value={x.status} />
-                    {x.status !== "Cancelado" && (
-                      <Button size="sm" variant="ghost" className="text-rose-500" onClick={() => setCancelPayTarget(x)} data-testid={`patient-cancel-payment-${x.id}`}>
-                        <X size={12} className="mr-1" /> Cancelar
-                      </Button>
-                    )}
+                    <p className="text-sm font-semibold">{currencyMXN(x.amount)}</p>
+                    <StatusBadge value="Pagado" />
                   </div>
                 ))}
-                {pays.length === 0 && <p className="text-sm text-muted-foreground p-6 text-center">Sin pagos registrados.</p>}
+                {!loadingPayments && bePayments.length === 0 && (
+                  <p className="text-sm text-muted-foreground p-6 text-center" data-testid="patient-payments-empty">Sin pagos registrados.</p>
+                )}
               </div>
             </TabsContent>
 
             <TabsContent value="history" className="mt-4">
-              <PatientHistory patientId={id} />
+              <PatientHistory key={detailRefreshKey} patientId={id} />
             </TabsContent>
 
             <TabsContent value="notes" className="mt-4">
-              <div className="rounded-xl border border-border p-4 text-sm text-muted-foreground">
-                Aquí podrás agregar notas clínicas, indicaciones y observaciones del paciente.
-              </div>
+              <PatientNotes patientId={Number(id)} onNoteAdded={() => setDetailRefreshKey((k) => k + 1)} />
             </TabsContent>
           </Tabs>
         </div>
       </div>
 
       <ChangeDoctorDialog open={doctorOpen} onOpenChange={setDoctorOpen} appointment={nextApptLocal} />
-      <CreateAppointmentDialog open={createOpen} onOpenChange={setCreateOpen} />
+      <CreateAppointmentDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        lockedPatient={detail ? {
+          id: Number(id),
+          fullName: detail.fullName || p.name,
+          expedientNumber: detail.expedientNumber || p.expediente,
+          phone: detail.phone || "",
+          email: detail.email || "",
+        } : null}
+        onCreated={() => setDetailRefreshKey((k) => k + 1)}
+      />
+      <EditPatientDialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        patientId={id}
+        onSaved={() => setDetailRefreshKey((k) => k + 1)}
+      />
       <RescheduleDialog open={!!rescheduleAppt} onOpenChange={(v) => !v && setRescheduleAppt(null)} appointment={rescheduleAppt} />
       <CancelAppointmentDialog open={!!cancelAppt} onOpenChange={(v) => !v && setCancelAppt(null)} appointment={cancelAppt} />
-      <RegisterPaymentDialog open={registerPayOpen} onOpenChange={setRegisterPayOpen} patientId={id} />
+      <RegisterPaymentDialog
+        open={registerPayOpen}
+        onOpenChange={setRegisterPayOpen}
+        patientId={Number(id)}
+        patient={detail ? { fullName: detail.fullName, expedientNumber: detail.expedientNumber } : null}
+        onSaved={() => setDetailRefreshKey((k) => k + 1)}
+      />
       <CancelPaymentDialog open={!!cancelPayTarget} onOpenChange={(v) => !v && setCancelPayTarget(null)} payment={cancelPayTarget} />
     </div>
   );

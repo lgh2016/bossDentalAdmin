@@ -38,7 +38,7 @@ export const NAV_BY_ROLE = {
       label: "Administración",
       items: [
         { to: "/pagos", label: "Pagos", icon: CreditCard },
-        { to: "/doctores", label: "Doctores", icon: UserCog },
+        { to: "/admin/doctores", label: "Doctores", icon: UserCog },
       ],
     },
   ],

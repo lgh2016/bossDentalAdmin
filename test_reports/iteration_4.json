@@ -1,0 +1,42 @@
+{
+  "summary": "Backend regression for Boss Dental FastAPI pivot (replacement of Java/Spring). 36/36 pytest tests passing against external URL https://dental-admin-10.preview.emergentagent.com/api. Covered: /api/health, full auth flow (login admin+reception, /me, /refresh with token alias, 401 on bad creds + missing/bad bearer), branches+doctors/active (4 doctores), patients CRUD-light + detail + appointments + activity-logs (PATIENT_CREATED registered), full lock workflow (start-slots → lock → 409 conflict → end-slots → end-time/start-time/dentist/date PUT → confirm → APPOINTMENT_CREATED log), LOCKED excluded from schedule/month+day, schedule/month buckets with loadLevel, schedule/day, dashboard today count + paged contract, /activity-logs envelope, expired lock 410 (forzando lockedUntil al pasado en Mongo), cleanup-expired-locks borra el lock vencido, idempotencia del seed (corre 2 veces y conteo de doctores/sucursales/login no cambia).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "auth.py: contrato cumplido (accessToken + refreshToken + user con role/branch). /auth/refresh devuelve `token` y `accessToken` para compatibilidad — bien documentado.",
+    "appointments.py: lock TTL 10min y end-slot generation con step=15min y máximo 12 elementos es correcto y consistente con el contrato Java original. _is_lock_expired robusto frente a 'Z' y missing field.",
+    "patients.py POST returns 200 (no 201). Frontend lo consume tal cual; aceptable pero por convención REST 201 sería más limpio.",
+    "patient_detail nextAppointment incluye estados LOCKED — podría filtrar para no exponer locks a vista de paciente (currently returns LOCKED if no CONFIRMED future appt). Hoy no causa fallo porque schedule/* sí los excluye, pero patient detail los muestra.",
+    "schedule/month: buckets se construyen sólo para fechas con citas, por lo que días vacíos no aparecen con loadLevel=VACIO — esperado si el frontend rellena el calendario por sí mismo (verificado en el contrato). Si el frontend espera todos los días del mes, habría que rellenar.",
+    "doctors/active: hardcodea active=True y availableForAppointments=True en la respuesta aunque el filtro de query ya los exige; correcto pero podría devolver el valor real para futura flexibilidad.",
+    "dashboard.py: _today_query usa branch del usuario; cuenta correctamente excluyendo LOCKED/CANCELLED. ✅",
+    "activity_logs.py: no filtra por branch ni rol — visible para cualquiera autenticado. Confirmar si recepción debería ver TODOS los logs o sólo los de su sucursal.",
+    "ids.py + Mongo counters: idempotente y atomic (verificado con seed corrido 2 veces sin duplicados)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py (nuevo - 36 tests pytest)",
+    "/app/backend/tests/__init__.py"
+  ],
+  "success_rate": {
+    "backend": "100% (36/36)",
+    "frontend": "not_tested (per request - backend only)"
+  },
+  "test_credentials": "admin@bossdental.com / admin123 (ADMIN), reception@bossdental.com / admin1234 (RECEPTION)",
+  "seed_data_creation": "Cada corrida del test crea 1 paciente TEST_<uuid> + 2 citas (1 confirmada, 1 lock expirado que luego se limpia). No se borran al final; usar limpieza manual si se requiere reset.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Tests viven en /app/backend/tests/backend_test.py y corren con `cd /app/backend && python -m pytest tests/backend_test.py -v --junitxml=/app/test_reports/pytest/pytest_results.xml`. Usan URL externa (REACT_APP_BACKEND_URL). Test de expired-lock 410 inyecta lockedUntil pasado directamente en Mongo vía script efímero /tmp/_force_expire.py (usa MONGO_URL+DB_NAME del .env). Si el frontend o cambios futuros tocan el contrato de /appointments/lock o /confirm, este archivo cubre la regresión completa.",
+  "rca_of_the_issue": "N/A — primer testing post-pivote a FastAPI; todos los contratos JSON requeridos por el frontend están respetados al 100%."
+}

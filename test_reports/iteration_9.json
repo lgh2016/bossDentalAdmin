@@ -1,0 +1,38 @@
+{
+  "summary": "Boss Dental — Módulo Tratamientos + nuevos estados de Presupuesto validados extremo a extremo. BACKEND: nuevo archivo /app/backend/tests/backend_test_treatments.py con 15 tests (15/15 PASS). Cubre: creación DRAFT, transiciones present/accept/reject, cascade ACCEPTED→IN_EXECUTION al crear tratamiento, copia de activities con budgetItemId, progress, outcome shortcuts (completed/continues/not_done), finalize con cascade a FINALIZED, pause/resume/cancel, SYNC: agregar item crea actividad PENDING, eliminar item PENDING la cancela, eliminar item COMPLETED → 409, PATCH bloqueado con 409 si hay actividad IN_PROGRESS, cambio de precio NO afecta unitPrice congelado de la activity, totalBudgeted ignora REJECTED/CANCELLED. Tests previos /app/backend/tests/backend_test_budgets.py actualizados: única línea de cambio fue assert d['status']=='DRAFT' (antes 'ACTIVE'). 10/10 PASS post-actualización. FRONTEND: validación E2E con Playwright (admin@bossdental.com) en paciente recién creado (id 816): ✅ presupuesto ACEPTADO muestra footer con botón budget-start-treatment-{id}; click crea tratamiento vía API y auto-cambia a la pestaña Tratamientos; ✅ data-testid='treatments-container' presente con treatment-card-{id}, treatment-progress-{id} (0%→50%→100%), treatment-progress-bar-{id}, activity-row-{aid}, activity-status-{aid}; ✅ activity-start funciona (IN_PROGRESS), activity-complete funciona (COMPLETED); ✅ porcentaje refleja correctamente sólo COMPLETED (start no avanza %, complete sí — correcto por requisito); ✅ treatment-finalize-{id} disabled hasta que todas las elegibles estén COMPLETED, luego habilitado a 100%. Sin errores en consola del navegador (sólo warnings de logging interno).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test_treatments.py",
+    "/app/backend/tests/backend_test_budgets.py",
+    "/app/test_reports/pytest/treatments_results.xml",
+    "/app/test_reports/pytest/budgets_results.xml"
+  ],
+  "action_items": [
+    "(Opcional) La regla 'sólo un tratamiento abierto por paciente' en routers/treatments.py es defensiva pero inalcanzable por la API pública: el sistema ya bloquea crear un segundo presupuesto ACCEPTED mientras existe uno abierto (DRAFT/PRESENTED/ACCEPTED/IN_EXECUTION). No es un bug — sólo redundancia útil."
+  ],
+  "critical_code_review_comments": [
+    "routers/treatments.py:create_treatment — valida budget.status=='ACCEPTED' (409 si no), congelación correcta de activities con budgetItemId, qty, unitPrice, observations; cascade a IN_EXECUTION; log TREATMENT_STARTED con description con nombre del paciente y presupuesto. ✅",
+    "routers/treatments.py:update_activity — outcome shortcuts mapean correctamente a COMPLETED/IN_PROGRESS/POSTPONED; cada transición inserta action_code apropiado; bloquea CANCELLED y tratamientos terminales (409). ✅",
+    "routers/treatments.py:finalize — requiere que no haya pendientes (409) y hace cascade al presupuesto a FINALIZED. ✅",
+    "routers/treatments.py:_compute_progress — excluye CANCELLED del total correctamente. ✅",
+    "routers/patients.py (sync) — agregar item sin id genera nueva activity PENDING con budgetItemId nuevo; eliminar item con activity COMPLETED → 409; activity en estados editables → CANCELLED automático; PATCH con activity IN_PROGRESS → 409; cambio de unitPrice NO se propaga al precio congelado de la activity. ✅",
+    "Frontend TreatmentEditor.jsx — todos los data-testid solicitados están presentes y son únicos por id de tratamiento/actividad. Botones disabled correctos según estado.",
+    "Frontend QuotationEditor.jsx — STATUS_META con DRAFT/PRESENTED/ACCEPTED/REJECTED/IN_EXECUTION/FINALIZED; botones por estado renderizados según isEditable/isOpen; footer ACCEPTED con budget-start-treatment-{id} y mensaje listo para iniciar tratamiento. ✅"
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test_treatments.py (NUEVO — 15 tests cubren todos los requisitos del review_request)",
+    "/app/backend/tests/backend_test_budgets.py (1 línea: status esperado 'DRAFT' en lugar de 'ACTIVE' tras POST)"
+  ],
+  "success_rate": { "backend": "100% (25/25 — treatments 15/15 + budgets 10/10)", "frontend": "100% — flujo Presentar→Aceptar→Iniciar tratamiento→Completar actividades→Habilitar Finalizar validado E2E" },
+  "test_credentials": "admin@bossdental.com / admin123",
+  "seed_data_creation": "Tests crean pacientes frescos TEST_Tx_<hex>; UI E2E creó paciente id 816 (UI_TEST Tx1d07ba) con un tratamiento FINALIZED tras completar las 2 actividades. Puede mantenerse o limpiarse manualmente.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Suites: cd /app/backend && python -m pytest tests/backend_test_treatments.py tests/backend_test_budgets.py -v. Para UI: login admin → crear paciente → crear budget vía API/UI → present → accept → click budget-start-treatment-{id} → ver pestaña Tratamientos. NOTA: la regla 'un solo tratamiento abierto por paciente' no es alcanzable por la API pública (test ajustado para validar el guard usando el mismo budgetId).",
+  "rca_of_the_issue": "Sin bugs encontrados. La iteración cumple al 100% los requisitos del review_request: nuevos estados de presupuesto, módulo treatments con cascades automáticos, sincronización bidireccional presupuesto↔tratamiento con bloqueos correctos en estados activos, y UI completa con todos los data-testid solicitados."
+}
