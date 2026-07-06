@@ -35,7 +35,7 @@ const emptyNewPatient = () => ({
   email: "",
   phone: "",
   gender: "",
-  birthDate: "",
+  age: "",
   address: "",
   emergencyContactName: "",
   emergencyContactPhone: "",
@@ -51,20 +51,20 @@ function validateNewPatient(p) {
   else if (!NAME_REGEX.test(p.name.trim())) errors.name = "Solo letras, acentos y Ñ";
   if (!p.lastName?.trim()) errors.lastName = "Apellido requerido";
   else if (!NAME_REGEX.test(p.lastName.trim())) errors.lastName = "Solo letras, acentos y Ñ";
-  if (!p.email?.trim()) errors.email = "Email requerido";
-  else if (!EMAIL_REGEX.test(p.email.trim())) errors.email = "Email inválido";
+  // Email opcional: sólo validar formato si se capturó.
+  if (p.email?.trim() && !EMAIL_REGEX.test(p.email.trim())) errors.email = "Email inválido";
   if (!p.phone) errors.phone = "Teléfono requerido";
   else if (!PHONE_REGEX.test(String(p.phone))) errors.phone = "10 dígitos numéricos";
   if (!p.gender) errors.gender = "Género requerido";
-  if (!p.birthDate) errors.birthDate = "Fecha requerida";
+  // Edad requerida: entero positivo entre 0 y 120.
+  const ageStr = String(p.age ?? "").trim();
+  if (!ageStr) errors.age = "Edad requerida";
+  else if (!/^\d+$/.test(ageStr)) errors.age = "Solo números enteros";
   else {
-    const d = new Date(p.birthDate);
-    const now = new Date();
-    if (Number.isNaN(d.getTime())) errors.birthDate = "Fecha inválida";
-    else if (d > now) errors.birthDate = "No puede ser futura";
-    else if (d < new Date("1900-01-01")) errors.birthDate = "Fecha fuera de rango";
+    const n = Number(ageStr);
+    if (n < 0 || n > 120) errors.age = "Rango válido: 0-120 años";
   }
-  if (!p.address?.trim()) errors.address = "Dirección requerida";
+  // Dirección ahora es opcional (sin validación).
   if (p.emergencyContactName?.trim() && !NAME_REGEX.test(p.emergencyContactName.trim())) {
     errors.emergencyContactName = "Solo letras, acentos y Ñ";
   }
@@ -288,7 +288,7 @@ export default function CreateAppointmentDialog({ open, onOpenChange, defaultDat
 
   const handleRegisterPatient = async (e) => {
     e.preventDefault();
-    setTouched({ name: true, lastName: true, email: true, phone: true, gender: true, birthDate: true, address: true });
+    setTouched({ name: true, lastName: true, email: true, phone: true, gender: true, age: true, address: true });
     if (!isPatientFormValid) { toast.error("Revisa los campos en rojo"); return; }
     const payload = {
       name: newPatient.name.trim(),
@@ -296,7 +296,7 @@ export default function CreateAppointmentDialog({ open, onOpenChange, defaultDat
       email: newPatient.email.trim(),
       phone: Number(newPatient.phone),
       gender: newPatient.gender,
-      birthDate: newPatient.birthDate,
+      age: Number(newPatient.age),
       address: newPatient.address.trim(),
       emergencyContactName: newPatient.emergencyContactName.trim(),
       emergencyContactPhone: String(newPatient.emergencyContactPhone),
@@ -562,7 +562,7 @@ export default function CreateAppointmentDialog({ open, onOpenChange, defaultDat
                   {fieldError("lastName") && <p className="text-[11px] text-rose-500 mt-1">{patientErrors.lastName}</p>}
                 </div>
                 <div>
-                  <Label className="text-xs">Email</Label>
+                  <Label className="text-xs">Email <span className="text-muted-foreground">(opcional)</span></Label>
                   <Input
                     data-testid="new-patient-email"
                     type="email"
@@ -595,19 +595,23 @@ export default function CreateAppointmentDialog({ open, onOpenChange, defaultDat
                   {fieldError("gender") && <p className="text-[11px] text-rose-500 mt-1">{patientErrors.gender}</p>}
                 </div>
                 <div>
-                  <Label className="text-xs">Fecha de nacimiento</Label>
+                  <Label className="text-xs">Edad</Label>
                   <Input
-                    data-testid="new-patient-birthdate"
-                    type="date"
-                    value={newPatient.birthDate}
-                    onChange={(e) => updPatient({ birthDate: e.target.value })}
-                    onBlur={() => markTouched("birthDate")}
-                    className={`mt-1 ${errCls(fieldError("birthDate"))}`}
+                    data-testid="new-patient-age"
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    max={120}
+                    step={1}
+                    value={newPatient.age}
+                    onChange={(e) => updPatient({ age: e.target.value.replace(/\D/g, "") })}
+                    onBlur={() => markTouched("age")}
+                    className={`mt-1 ${errCls(fieldError("age"))}`}
                   />
-                  {fieldError("birthDate") && <p className="text-[11px] text-rose-500 mt-1">{patientErrors.birthDate}</p>}
+                  {fieldError("age") && <p className="text-[11px] text-rose-500 mt-1">{patientErrors.age}</p>}
                 </div>
                 <div className="col-span-2">
-                  <Label className="text-xs">Dirección</Label>
+                  <Label className="text-xs">Dirección <span className="text-muted-foreground">(opcional)</span></Label>
                   <Input
                     data-testid="new-patient-address"
                     value={newPatient.address}
