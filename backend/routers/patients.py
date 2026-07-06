@@ -20,8 +20,11 @@ class PatientCreateIn(BaseModel):
     email: EmailStr | str = ""
     phone: int | str
     gender: str
-    birthDate: str
-    address: str
+    # Edad es la vía preferida (recepción normalmente sólo conoce la edad).
+    # birthDate queda opcional por compatibilidad con clientes existentes.
+    age: Optional[int] = None
+    birthDate: Optional[str] = ""
+    address: Optional[str] = ""
     emergencyContactName: Optional[str] = ""
     emergencyContactPhone: Optional[str] = ""
     photoUrl: Optional[str] = None
@@ -34,6 +37,7 @@ class PatientUpdateIn(BaseModel):
     email: Optional[EmailStr | str] = None
     phone: Optional[int | str] = None
     gender: Optional[str] = None
+    age: Optional[int] = None
     birthDate: Optional[str] = None
     address: Optional[str] = None
     emergencyContactName: Optional[str] = None
@@ -68,6 +72,22 @@ def _expedient_number(seq: int) -> str:
 async def create_patient(body: PatientCreateIn, user = Depends(current_user)):
     seq = await next_seq("patient")
     expedient = _expedient_number(seq)
+
+    # Recepción normalmente sólo conoce la edad, así que la aceptamos como
+    # fuente de verdad. Sintetizamos un birthDate al 1-ene del año calculado
+    # para no romper otros consumidores existentes.
+    age = body.age
+    birthDate = (body.birthDate or "").strip()
+    if age is not None:
+        if not isinstance(age, int) or age < 0 or age > 120:
+            raise HTTPException(status_code=400, detail="Edad inválida (0-120)")
+        year = datetime.now(timezone.utc).year
+        birthDate = f"{year - int(age)}-01-01"
+    elif birthDate:
+        age = _calc_age(birthDate)
+    else:
+        raise HTTPException(status_code=400, detail="Edad requerida")
+
     doc = {
         "id": seq,
         "expedientNumber": expedient,
@@ -76,8 +96,9 @@ async def create_patient(body: PatientCreateIn, user = Depends(current_user)):
         "email": (body.email or "").lower() if body.email else "",
         "phone": str(body.phone),
         "gender": body.gender,
-        "birthDate": body.birthDate,
-        "address": body.address,
+        "age": int(age),
+        "birthDate": birthDate,
+        "address": (body.address or "").strip(),
         "emergencyContactName": (body.emergencyContactName or "").strip(),
         "emergencyContactPhone": (body.emergencyContactPhone or "").strip(),
         "photoUrl": body.photoUrl,
@@ -186,7 +207,7 @@ async def patient_detail(patient_id: int, user = Depends(current_user)):
         "expedientNumber": p.get("expedientNumber"),
         "fullName": full_name,
         "gender": p.get("gender", "—"),
-        "age": _calc_age(p.get("birthDate", "")),
+        "age": p.get("age") if p.get("age") is not None else _calc_age(p.get("birthDate", "")),
         "email": p.get("email") or None,
         "phone": p.get("phone") or None,
         "location": p.get("address") or None,
