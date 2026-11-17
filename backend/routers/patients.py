@@ -460,30 +460,23 @@ class PaymentIn(BaseModel):
 
 
 async def _patient_totals(patient_id: int) -> dict:
-    """Suma de pagos del paciente + presupuesto vigente.
+    """Suma presupuestos comprometidos y descuenta los pagos una sola vez.
 
-    Reglas para `totalBudgeted`:
-      - Prefiere el presupuesto abierto (DRAFT, PRESENTED, ACCEPTED, IN_EXECUTION o ACTIVE legacy).
-      - Si no hay, el último FINALIZED más reciente.
-      - Ignora REJECTED y CANCELLED.
+    DRAFT, PRESENTED y ACTIVE legacy son propuestas, no deuda exigible.
+    Conserva FINALIZED como estado contabilizable por compatibilidad.
     """
     paid = 0.0
     async for d in db.payments.find({"patientId": patient_id}, {"_id": 0, "amount": 1}):
         try: paid += float(d.get("amount") or 0)
         except (TypeError, ValueError): pass
-    current = await db.budgets.find_one(
-        {"patientId": patient_id, "status": {"$in": list(_BUDGET_OPEN)}},
+    budget = 0.0
+    async for d in db.budgets.find(
+        {"patientId": patient_id, "status": {"$in": ["ACCEPTED", "IN_EXECUTION", "FINALIZED"]}},
         {"_id": 0, "total": 1},
-        sort=[("createdAt", -1)],
-    )
-    if not current:
-        current = await db.budgets.find_one(
-            {"patientId": patient_id, "status": "FINALIZED"},
-            {"_id": 0, "total": 1},
-            sort=[("finalizedAt", -1), ("createdAt", -1)],
-        )
-    budget = float((current or {}).get("total") or 0)
-    return {"paidAmount": paid, "totalBudgeted": budget, "balance": max(0.0, budget - paid)}
+    ):
+        budget += float(d.get("total") or 0)
+    paid, budget = round(paid, 2), round(budget, 2)
+    return {"paidAmount": paid, "totalBudgeted": budget, "balance": max(0.0, round(budget - paid, 2))}
 
 
 @router.post("/{patient_id}/payments")
@@ -601,8 +594,6 @@ _BUDGET_LEGACY_ALIAS = {"ACTIVE": "PRESENTED"}
 _BUDGET_EDITABLE = {"DRAFT", "PRESENTED", "ACTIVE", "IN_EXECUTION"}
 # Estados terminales no permiten ninguna transición de regreso.
 _BUDGET_TERMINAL = {"FINALIZED", "REJECTED", "CANCELLED"}
-# Estados que ocupan el slot "vigente" de un paciente (no puede haber 2 abiertos).
-_BUDGET_OPEN = {"DRAFT", "PRESENTED", "ACCEPTED", "IN_EXECUTION", "ACTIVE"}
 
 
 def _norm_status(s: str | None) -> str:
@@ -618,16 +609,6 @@ async def _create_budget(patient_id: int, body: BudgetIn, user) -> dict:
         raise HTTPException(status_code=404, detail="Paciente no encontrado")
     if not body.items:
         raise HTTPException(status_code=400, detail="Agrega al menos un concepto")
-    # No permitir crear si ya hay uno abierto (DRAFT/PRESENTED/ACCEPTED/IN_EXECUTION o ACTIVE legacy).
-    open_b = await db.budgets.find_one(
-        {"patientId": patient_id, "status": {"$in": list(_BUDGET_OPEN)}},
-        {"_id": 0, "id": 1},
-    )
-    if open_b:
-        raise HTTPException(
-            status_code=409,
-            detail="Finaliza, rechaza o cancela el presupuesto actual antes de crear uno nuevo.",
-        )
     import uuid
     items = []
     total = 0.0
@@ -681,7 +662,7 @@ async def list_budgets(patient_id: int, user = Depends(current_user)):
 
 @router.post("/{patient_id}/budgets")
 async def create_budget(patient_id: int, body: BudgetIn, user = Depends(current_user)):
-    """Crea un nuevo presupuesto ACTIVE para el paciente. Falla si ya hay uno editable."""
+    """Crea un presupuesto DRAFT independiente sin sobrescribir los anteriores."""
     return await _create_budget(patient_id, body, user)
 
 

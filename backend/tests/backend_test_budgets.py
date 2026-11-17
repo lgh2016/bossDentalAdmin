@@ -81,11 +81,12 @@ def test_create_budget_active_with_observations(H, patient_id):
     pytest.b1_items = d["items"]
 
 
-def test_create_when_editable_exists_returns_409(H, patient_id):
+def test_create_when_editable_exists_creates_independent_budget(H, patient_id):
     payload = {"name": "Duplicado", "items": [{"name": "X", "qty": 1, "unitPrice": 1}]}
     r = requests.post(f"{API}/patients/{patient_id}/budgets", json=payload, headers=H, timeout=15)
-    assert r.status_code == 409
-    assert "detail" in r.json()
+    assert r.status_code == 200
+    assert r.json()["data"]["id"] != pytest.b1_id
+    assert r.json()["data"]["status"] == "DRAFT"
 
 
 def test_patch_preserves_item_ids_and_observations(H, patient_id):
@@ -202,12 +203,12 @@ def test_total_budgeted_uses_finalized_when_no_editable(H, patient_id):
     assert d["totalBudgeted"] == 2350.0
 
 
-def test_total_budgeted_prefers_active_over_finalized(H, patient_id):
-    # Create a new ACTIVE budget — it should take precedence.
+def test_draft_does_not_replace_finalized_total(H, patient_id):
+    # A new proposal does not replace the committed total or create debt.
     payload = {"name": "Vigente", "items": [{"name": "X", "qty": 1, "unitPrice": 99}]}
     r = requests.post(f"{API}/patients/{patient_id}/budgets", json=payload, headers=H, timeout=15)
     assert r.status_code == 200
     d = requests.get(f"{API}/patients/{patient_id}/detail", headers=H, timeout=15).json()["data"]
-    assert d["totalBudgeted"] == 99.0
+    assert d["totalBudgeted"] == 2350.0
     # cleanup
     requests.put(f"{API}/patients/{patient_id}/budgets/{r.json()['data']['id']}/cancel", headers=H, timeout=15)

@@ -28,10 +28,8 @@ const STATUS_META = {
 };
 
 const EDITABLE_STATUSES = new Set(["DRAFT", "PRESENTED", "ACTIVE", "IN_EXECUTION"]);
-const OPEN_STATUSES = new Set(["DRAFT", "PRESENTED", "ACTIVE", "ACCEPTED", "IN_EXECUTION"]);
 
 const isEditable = (b) => b && EDITABLE_STATUSES.has(b.status);
-const isOpen = (b) => b && OPEN_STATUSES.has(b.status);
 
 const newTmpId = () => `tmp-${Math.random().toString(36).slice(2, 9)}`;
 
@@ -111,7 +109,28 @@ export default function QuotationEditor({ patientId, onSaved, onStartTreatment }
 
   useEffect(() => { if (patientId) reload(); }, [patientId]);
 
-  const hasEditable = budgets.some(isOpen);
+  const hasNewDraft = budgets.some((b) => b.isNew);
+
+  // Reemplaza únicamente el presupuesto guardado. Los demás borradores y sus
+  // expansiones permanecen intactos; no dependemos de remontar la pestaña.
+  const applySavedBudget = (raw, previousId = raw.id) => {
+    const saved = normalizeBudget(raw);
+    setBudgets((prev) => prev.some((b) => b.id === previousId)
+      ? prev.map((b) => b.id === previousId ? saved : b)
+      : [saved, ...prev]);
+    setDrafts((prev) => {
+      const next = { ...prev };
+      delete next[previousId];
+      next[saved.id] = { ...saved, items: saved.items.map((item) => ({ ...item })) };
+      return next;
+    });
+    setExpanded((prev) => {
+      const next = { ...prev };
+      delete next[previousId];
+      next[saved.id] = prev[previousId] ?? true;
+      return next;
+    });
+  };
 
   // --- Helpers de mutación del draft ---
   const updateDraft = (bid, patch) =>
@@ -162,8 +181,8 @@ export default function QuotationEditor({ patientId, onSaved, onStartTreatment }
   // --- Crear presupuesto nuevo (placeholder local). ---
   // Lo abrimos como un draft local con id "new"; al guardar, se hace POST y se reemplaza.
   const startNewBudget = () => {
-    if (hasEditable) {
-      toast.error("Finaliza o cancela el presupuesto actual antes de crear uno nuevo");
+    if (hasNewDraft) {
+      toast.error("Guarda o descarta el nuevo presupuesto antes de abrir otro");
       return;
     }
     const tmp = {
@@ -213,13 +232,14 @@ export default function QuotationEditor({ patientId, onSaved, onStartTreatment }
         })),
       };
       if (bid === "__new__") {
-        await patientsApi.createBudget(patientId, payload);
+        const result = await patientsApi.createBudget(patientId, payload);
+        applySavedBudget(result.data, bid);
         toast.success("Presupuesto creado");
       } else {
-        await patientsApi.updateBudget(patientId, bid, payload);
+        const result = await patientsApi.updateBudget(patientId, bid, payload);
+        applySavedBudget(result.data, bid);
         toast.success("Presupuesto guardado");
       }
-      await reload();
       onSaved?.();
     } catch (err) {
       const detail = err?.response?.data?.detail;
@@ -232,9 +252,9 @@ export default function QuotationEditor({ patientId, onSaved, onStartTreatment }
   const handleFinalize = async (bid) => {
     setSavingId(bid);
     try {
-      await patientsApi.finalizeBudget(patientId, bid);
+      const result = await patientsApi.finalizeBudget(patientId, bid);
+      applySavedBudget(result.data, bid);
       toast.success("Presupuesto finalizado");
-      await reload();
       onSaved?.();
     } catch (err) {
       const detail = err?.response?.data?.detail;
@@ -248,9 +268,9 @@ export default function QuotationEditor({ patientId, onSaved, onStartTreatment }
   const handleCancel = async (bid) => {
     setSavingId(bid);
     try {
-      await patientsApi.cancelBudget(patientId, bid);
+      const result = await patientsApi.cancelBudget(patientId, bid);
+      applySavedBudget(result.data, bid);
       toast.success("Presupuesto cancelado");
-      await reload();
       onSaved?.();
     } catch (err) {
       const detail = err?.response?.data?.detail;
@@ -265,9 +285,9 @@ export default function QuotationEditor({ patientId, onSaved, onStartTreatment }
   const runTransition = async (bid, fn, successMsg, errFallback) => {
     setSavingId(bid);
     try {
-      await fn();
+      const result = await fn();
+      applySavedBudget(result.data, bid);
       toast.success(successMsg);
-      await reload();
       onSaved?.();
     } catch (err) {
       const detail = err?.response?.data?.detail;
@@ -310,7 +330,7 @@ export default function QuotationEditor({ patientId, onSaved, onStartTreatment }
           <h3 className="text-sm font-semibold">Presupuestos del paciente</h3>
           <p className="text-xs text-muted-foreground">{budgets.length} en historial</p>
         </div>
-        <Button size="sm" onClick={startNewBudget} disabled={hasEditable} data-testid="budgets-new">
+        <Button size="sm" onClick={startNewBudget} disabled={hasNewDraft || savingId !== null} data-testid="budgets-new">
           <Plus size={13} className="mr-1" /> Nuevo presupuesto
         </Button>
       </div>
@@ -652,6 +672,18 @@ function ItemRow({ item, editable, onChange, onRemove, testId }) {
       <tr className="bg-muted/20" data-testid={`budget-row-details-${testId}`}>
         <td colSpan={editable ? 6 : 5} className="px-2 pb-3 pt-0">
           <div className="pl-1">
+            <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Descripción</Label>
+            {editable ? (
+              <Textarea
+                value={item.description || ""}
+                onChange={(e) => onChange({ description: e.target.value })}
+                placeholder="Descripción del procedimiento"
+                className="mt-1 mb-2 min-h-[44px] text-xs"
+                data-testid={`budget-row-description-${testId}`}
+              />
+            ) : (
+              <p className="text-xs whitespace-pre-wrap mb-2">{item.description || "—"}</p>
+            )}
             <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Observaciones / Detalles</Label>
             {editable ? (
               <Textarea

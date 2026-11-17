@@ -252,6 +252,7 @@ export default function PatientDetail() {
             <TabsContent value="appointments" className="mt-4">
               <PatientAppointmentsTab
                 patientId={id}
+                reloadKey={detailRefreshKey}
                 onCreate={() => setCreateOpen(true)}
                 onReschedule={(a) => setRescheduleAppt(a)}
                 onCancel={(a) => setCancelAppt(a)}

@@ -349,4 +349,4 @@ def test_total_budgeted_ignores_rejected_and_cancelled(H):
     tb = detail.get("totalBudgeted")
     if tb is None and "patient" in detail:
         tb = detail["patient"].get("totalBudgeted")
-    assert tb == 100, f"expected 100 got {tb}"
+    assert tb == 0, f"Draft and rejected budgets must not create debt: got {tb}"
